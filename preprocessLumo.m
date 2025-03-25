@@ -1,0 +1,626 @@
+function preprocessLumo(params)
+%
+% preprocessLumo
+%
+% Preprocesses HD-DOT data using pre-selected methods and user-defined
+% parameters.
+% Assumes data is stored in BIDS format
+% 
+% -------------------------------------------------------------------------
+%
+% Steps:
+%
+% [processing steps here]
+% 
+% -------------------------------------------------------------------------
+%
+% Arguments:        contained in the 'params' variable 
+%     
+% [input parameters here]
+%
+% dataRawLoc:       parent folder containing raw .nirs files (in BIDS 
+%                   format) to be processed
+%
+% dataOutLoc        parent folder to store processed files (will be stored
+%                   BIDS format)
+%
+% timepoint:        defines age of participants; must include 'mo'
+%                   INDiGO:
+%                   '1mo', '6mo', '12mo'
+%                   
+% task:             name of task 
+%                   INDiGO: 'hand', 'fc1' or 'fc2'
+%
+% -------------------------------------------------------------------------
+% Arguments:            define the pipeline methods
+% (optional)            ----- For Global pipeline set all to 1-----
+%
+% standardQT:          1/True utilises parameter values from Pollonini et
+%                       al (2016) for QT;
+%                       otherwise, values should be specified by user
+%
+% sciThreshold:         Value for SCI threshold in QT-NIRS to be specified
+%                       by user
+%
+% pspThreshold:         Value for PSP threshold in QT-NIRS to be specified
+%                       by user
+%
+% motionDetectHomer:    1/True selects Homer's motion artifact detection; 
+%                       otherwise, a Sobel filter is used for motion
+%                       artifact detection
+%
+% strictSobel:          1/True opts to use the author defined IQR coefft. 
+%                       value of 1.5 from Jahani et al. (2018)
+%                       otherwise, an IQR coefficient of 2 (more lenient 
+%                       for e.g infant participants) is used
+%
+% filterBand:           1 elects to use both a low *AND HIGH* pass filter;
+%                       otherwise, linear detrending is used (during block 
+%                       averaging) in place of the high pass filter
+%
+% regressShortSig:      1 ensures pipeline will utilise short separation
+%                       regression (SSR) to remove physiological noise;
+%                       otherwise, no SSR is employed
+%
+% shortSigMethod:       2 uses the average of short channels closest to the
+%                       source & detector of the long channel for SSR;
+%                       1 uses the global average of short channels;
+%                       otherwise, the nearest short channel is used
+%
+% Outputs: none to workspace; preprocessed files are saved in folders
+% named according to the required arguments (see above)
+%
+% SLB 17/1/2024
+%
+% Edited 25/3/25 to run with preprocessing function in modular form
+%
+
+
+
+
+%% Input processing. Check input arguments and assign where necessary
+% Check *optional* inputs 
+% check for user defined variable arguments
+propertyArgIn = varargin;
+while length(propertyArgIn) >= 2
+    nameArg = propertyArgIn{1};
+    valArg = propertyArgIn{2};
+    %check argument is in required format
+    if ~isnumeric(valArg) && ~islogical(valArg)
+        error("Variable inputs specifying pipeline methods must be numeric or logical. See 'help' for details.")
+    end
+    propertyArgIn = propertyArgIn(3:end);
+    switch nameArg
+        case 'pruneQT'
+            pruneQT = logical(valArg);
+        case 'standardQT'
+            standardQT = logical(valArg);
+        case 'sciThreshold'
+            sciThreshold = logical(valArg);
+        case 'pspThreshold'
+            pspThreshold = logical(valArg);
+        case 'motionDetectHomer'
+            motionDetectHomer = logical(valArg);
+        case 'strictSobel'
+            strictSobel = logical(valArg);
+        case 'filterBand'
+            filterBand = logical(valArg);
+        case 'regressShortSig'
+            regressShortSig = logical(valArg);
+        case 'shortSigMethod'
+            shortSigMethod = valArg;
+    end
+end
+
+% Assign default values if variable arguments not given
+if ~exist('pruneQT', 'var')
+    pruneQT = true; %prune using QT-NIRS by default
+end
+
+if ~exist('standardQT', 'var')
+    standardQT = true; %use default parameters for QT-NIRS
+end
+
+if ~exist('motionDetectHomer', 'var')
+    motionDetectHomer = true;
+end
+
+if ~exist('strictSobel', 'var')
+    strictSobel = true; 
+end
+
+if ~exist('filterBand', 'var')
+    filterBand = true; % bandpass filter by default
+end
+
+if ~exist('regressShortSig', 'var')
+    regressShortSig = true; %regress by default
+end
+
+if ~exist('shortSigMethod', 'var')
+    shortSigMethod = 2; %avg of nearest s. channels to S&D of long channel
+end
+
+if ~exist('sciThreshold', 'var') && ~exist('pspThreshold', 'var')
+    sciThreshold = 0.7; %standard for adults - Pollonini et al 2016
+    pspThreshold = 0.1; %standard for adults - Pollonini et al 2016
+end
+
+%% Change name of output folder according to methods used
+
+
+if params.regressShortSig == 1
+    if shortSigMethod == 2
+        ssrName = 'NearestAvgSSR';
+    elseif shortSigMethod == 1
+        ssrName = 'GlobalAvgSSR';
+    else
+        ssrName = 'NearestChannelSSR';
+    end
+else
+    ssrName = 'NoSSR';
+end
+
+%% Change paths depending on the task being analyzed (hand, FC)
+
+inputPath = fullfile(dataRawLoc, cohort, strcat(timepoint, 'mo'), upper(task));
+folderAppend = strcat(pruneName, '_', ssrName); %according to pipeline methods above
+nirsOutputsFolderPath = fullfile(dataOutLoc, cohort, strcat(timepoint, 'mo'), upper(task), 'nirs', folderAppend);
+preproOutputsFolderPath = fullfile(dataOutLoc, cohort, strcat(timepoint, 'mo'), upper(task), 'prepro', folderAppend);
+if ~isfolder(nirsOutputsFolderPath)
+    mkdir(nirsOutputsFolderPath);
+end
+if ~isfolder(preproOutputsFolderPath)
+    mkdir(preproOutputsFolderPath);
+end
+cd(inputPath)
+sub = dir('*.nirs'); %list folders in directory
+sub = sub(~ismember({sub.name}, {'.', '..', '.DS_Store'})); %remove unneeded folders from list
+
+clear detectName nameArg propertyArgIn valArg varargin
+
+%% Define method parameters
+% Channel pruning
+params.dRange = [1e-03 1e+07]; % Di Lorenzo et al. 2019
+params.SNRthresh = 0; % Di Lorenzo et al. 2019
+params.SDrange = [0 60]; % Frijia et al. 2021
+
+% Motion detection parameters
+params.tMotion = 1; % Di Lorenzo et al. 2019
+params.tMaskPrune = 0; % Want to only consider the motion itself WHEN PRUNING
+params.tMask = 1; % want a buffer of 1s normally (Di Lorenzo et al. 2019)
+params.STDEVthresh = 15; % Di Lorenzo et al. 2019
+params.AMPthresh = 0.4; % Di Lorenzo et al. 2019
+
+%window length, for QT-NIRS and motion-affected sample exclusion
+params.windowSec = 3; 
+% minimum number of motion windows required in order to exclude from pruning
+% calculations
+params.badWindowThresh = 3;
+
+if pruneQT == 1
+    % QT-NIRS parameters
+    % User defined:
+    params.sci_threshold = sci_threshold; 
+    params.psp_threshold = psp_threshold;
+    % Set:
+    params.bpFmin = 1.2; params.bpFmax = 3.2; %Minigawa et al. 2023
+    params.windowSec = 3; %Allows for better motion detection exclusion using windows from QT-NIRS pruning
+    params.windowOverlap = 0; %Pollonini et al 2016
+    params.quality_threshold = 0.75; %change for infants?
+else
+    % Threshold of CV
+    %set as decimal for percentage equivalent, not as integer value!
+    params.CV = 0.08; % Frijia et al. 2020
+end
+   
+params.gui_flag = 0; %change if you want to see the graphics containing qtnirs 'quality' for each channel
+
+% Spline denoising parameter
+params.pSpline = 0.99; % Scholkmann et al 2010
+
+% Wavelet denoising parameter
+params.iqrWave = 0.8; % Molavi and Dumont 2012
+
+% Time range for block averaging and stim rejection
+params.tRange = [-4 18]; %based on fPCA work
+params.tRangeRej = [-4 12]; % Di Lorenzo et al. 2019
+
+% High and low pass filter params
+params.hpf = 0.01; % Di Lorenzo et al. 2019
+params.lpf = 0.5; % Di Lorenzo et al. 2019
+% change params for filter if detrending so only HPF applied
+
+
+%Define SSR parameters
+if regressShortSig == 1
+    params.rhoSD_ssThresh = 10;
+    if shortSigMethod == 2
+        params.flagSSmethod = 4; %Avg of short channels < rhoSSD_ssThresh distance from either source or detector in long channel: Uchitel et al. (2022), Gagnon et al (2012)
+    elseif shortSigMethod == 1
+        params.flagSSmethod = 2; %Avg of short channels: Uchitel et al. (2023), Sato et al (2016)
+    else
+        params.flagSSmethod = 0; %Nearest short channel: Emberson et al (2016); 
+    end
+end
+
+%get number of channels (both chroms)
+nirs = load(sub(1).name, '-mat');
+if ~exist('nirs.SD.MeasListAct', 'var')
+    nirs.SD.MeasListAct = nirs.SD.MeasList(:,3);
+end
+numChansBothChroms = length(nirs.SD.MeasListAct);
+
+%% Run Preprocessing
+for nsub = 1:length(sub)
+
+    % -------Print participant number -------
+    % (just so cmd window not blank as removed wavelet dwtmode message)
+    partName = sub(nsub).name;
+    fprintf(strcat("Preprocessing participant ", num2str(nsub), " - ", partName(1:4), "\n\n"));
+    
+    % Load .nirs data 
+    nirs = load([partName], '-mat');% filesep strcat(partName, '_', upper(task),'.nirs')], '-mat');
+    
+    % don't preprocess file if it contains NaNs anywhere - sometimes LUFR
+    % files contain NaN which are then passed to 'nirs.d' during conversion
+    if ~length(find(isnan(nirs.d))) == 0
+        % print message notifying user
+        nanErrorMsg = strcat("File ", partName, " could not be processed: data contains NaNs \n\n");
+        fprintf(nanErrorMsg);
+        continue
+    end
+
+    % define differential pathlength factor (age and gamma dependant)
+    ageYears = str2num(timepoint) / 12;
+    [DPF1, DPF2] = sbPrePCalcDPF(ageYears, nirs.SD.Lambda(1), nirs.SD.Lambda(2));
+    params.dpf = [DPF1 DPF2]; 
+
+    %calculate the sampling frequency
+    fs = 1 / mean(diff(nirs.t)); 
+    
+    
+    % --- Run data quality checks ---
+    % this produces multiple figures, so comment out for speed
+    %DOTHUB_dataQualityCheck(nirsFileName);
+    %disp('Examine data quality figures, press any key to continue');
+    %pause 
+    
+
+    % ------- Update sampling frequency (if necessary) -------
+    %nirs.t = 0:1/fs:(size(nirs.d,1)-1)/fs; %-1 to retain size of t, given starting at 0
+    
+    fprintf("Pruning channels ... ");
+
+    %%% ==================== PRUNE CHANNELS =======================
+    % Detect motion artifacts (so they can be discounted from channel
+    % pruning calculations in next step)
+    [nirs.SD3D.tInc, nirs.SD3D.tIncCh] = hmrMotionArtifactByChannel(nirs.d, nirs.t, nirs.SD3D, [], params.tMotion, params.tMaskPrune, params.STDEVthresh, params.AMPthresh);
+
+% Sobel filter removes too much data - ignore!
+%     if motionDetectHomer == 1
+%         % ------- Motion detection using amp and std thresholds (by channel) -------
+%         [tInc] = hmrMotionArtifact(nirs.d, nirs.t, nirs.SD3D, [], params.tMotion, params.tMask, params.STDEVthresh, params.AMPthresh);
+%     else
+%         % ------- Motion detection using Sobel Filter -------
+%         [tInc, ~] = sbSobelDetect(nirs.d, nirs.t, nirs.SD3D, 'buffer', params.tMotion, 'iqrCoeff', params.iqrCoeffSobel);
+%     end 
+    % Prune channels using Homer prior to QT-NIRS
+    nirs.SD3D = enPruneChannels(nirs.d, nirs.SD3D, nirs.SD3D.tInc, params.dRange, params.SNRthresh, params.SDrange, 0);
+
+    % Update SD2D with outputs from enPruneChannels
+    nirs.SD.MeasListAct = nirs.SD3D.MeasListAct;
+    nirs.SD.MeasListActAuto = nirs.SD3D.MeasListActAuto; %why?
+    nirs.SD.tInc = nirs.SD3D.tInc;
+    nirs.SD.tIncCh = nirs.SD3D.tIncCh;
+
+    tic;
+
+    % ===== Prune noisy channels =====
+    % Initialise variables
+    numChan = numChansBothChroms/2; %number of channels
+    arrayChans = linspace(1, 2*numChan, 2*numChan); %array with num. of each channel
+    
+    if pruneQT == 1
+        %ensure both chroms pruned if channel removed by Homer enPrune
+        homChans = find(nirs.SD.MeasListAct == 0);
+        hboChans = homChans(homChans <= numChan) + numChan;        
+        hbrChans = homChans(homChans > numChan) - numChan;
+        homChans = [homChans, hboChans, hbrChans];
+        homChans = unique(homChans);
+        % prune corresponding chrom channels using list 'homChans'
+        nirs.SD.MeasListAct(homChans) = 0;
+
+        % -- Prune channels with QT NIRS -- 
+        qualityMatrices = sbPrePqtnirs( ...
+            nirs, ...
+            'freqCut',[params.bpFmin, params.bpFmax], ...
+            'window', params.windowSec, ...
+            'overlap', params.windowOverlap, ...
+            'qualityThreshold', params.quality_threshold, ...
+            'sciThreshold', params.sci_threshold, ...
+            'pspThreshold', params.psp_threshold, ...
+            'conditionsMask','all', ...
+            'dodFlag', 0, ...
+            'guiFlag', params.gui_flag);
+
+        % Insert correct values for pruning 
+        % qtnirs changes the channel order during computation so need to find
+        % correct rows which have been pruned first
+        for i = 1:numChansBothChroms
+            %only changes if qualityMatrices val is 0 so as to not override
+            % previous changes by enPruneChannels
+            if qualityMatrices.MeasListAct(i) == 0 
+                iRow = find(nirs.SD.MeasList(:,1) == qualityMatrices.MeasList(i, 1) ...
+                            & nirs.SD.MeasList(:,2) == qualityMatrices.MeasList(i, 2) ...
+                            & nirs.SD.MeasList(:,4) == qualityMatrices.MeasList(i, 4));
+                nirs.SD.MeasListAct(iRow) = 0;
+            end
+        end
+    else
+        % -- Prune channels according to CV --
+        %calculate the sampling frequency
+        fs = 1 / mean(diff(nirs.t)); 
+        
+        % Calculate the number of samples per window
+        windowSizeSamples = floor(params.windowSec * fs);
+        %initialise a matrix for valid samples
+        validSamples = true(size(nirs.d));
+        % Initialise counter for motion detection
+        motionCount = zeros(size(nirs.d));
+
+        %create variables for later SNR calculation
+        windowMotion = zeros([size(arrayChans,2) floor(length(nirs.t)./windowSizeSamples)]);
+        windowTimes = zeros([2 floor(length(nirs.t)./windowSizeSamples)]);
+        windowCount = 0;
+        
+        % Loop through the data in windows in steps of 'windowSizeSamples'
+        for startIdx = 1:windowSizeSamples:(length(nirs.d)-mod(length(nirs.d), windowSizeSamples)) %, excludes final (small) window as in qtnirs
+            endIdx = min(startIdx + windowSizeSamples - 1, size(nirs.d, 1)); % Determine the end of the window
+
+            windowCount = windowCount+1;
+            
+            %store start-/endpoints of window to be used later for snr calc
+            windowTimes(1, windowCount) = startIdx;
+            windowTimes(2, windowCount) = endIdx;
+            
+            % Extract the current window of motion data
+            motionWindow = nirs.SD.tIncCh(startIdx:endIdx, :);
+
+            for iChan = 1:length(arrayChans)
+
+                if nirs.SD.MeasListAct(iChan) == 1
+            
+                    % Check for motion (zeros) in the window
+                    if any(motionWindow(:, iChan) == 0) % If there's motion in the current window
+                        validSamples(startIdx:endIdx, iChan) = false; % Mark these samples as invalid
+                        windowMotion(iChan, windowCount) = true; % mark the window as one containing motion
+                    end
+
+                end
+            end
+        end
+        
+        % Apply the mask to nirs.d to exclude samples from motion windows
+
+        %initialise CV
+        CV = zeros([1 numChansBothChroms]);
+        %initialise matrix with 'good' 
+        idGoodChan = zeros([1 numChansBothChroms]);
+
+        % calculate CV on channel by channel basis, using only motion-free
+        % segments
+        for iChan = 1:numChan
+
+            CV(iChan) = nanstd(nirs.d(find(validSamples(:,iChan) == 1), iChan)) / nanmean(nirs.d(find(validSamples(:,iChan) == 1), iChan));
+
+        end
+
+        for iChan = 1:numChan
+            if abs(CV(iChan) - CV(iChan+numChan)) < params.CV
+                idGoodChan(iChan) = 1;
+                idGoodChan(iChan+numChan) = 1;
+            end
+        end
+        
+        %check for channels which have already been pruned
+        idGoodChan = intersect(find(idGoodChan), find(nirs.SD.MeasListAct));
+
+        % array for 'good' channels
+        goodChans = zeros(numChansBothChroms, 1); 
+
+        % Set elements of goodChan to 1 according to CV val. above/below thresh
+        goodChans(idGoodChan) = 1;
+
+        %find channels where both chroms are retained (reuse idGoodChan)
+        goodChans = goodChans(1:numChan) + goodChans(numChan+1:end);
+        idGoodChan = find(goodChans == 2);
+
+        %account once again for the multiple chromophores
+        idGoodChan = [idGoodChan; idGoodChan + numChan];
+
+        % Set all channels except those in the 'good' list to 0, in the SD
+        % variable
+        nirs.SD.MeasListAct(setdiff(arrayChans,idGoodChan)) = 0;
+
+    end
+
+    nirs.timeElapsed.pruning = toc;
+
+    %Ensure SD3D and SD MeasListAct variables match after QT-NIRS/CV
+    %pruning
+    nirs.SD3D.MeasList = nirs.SD.MeasList; %shouldn't have changed?
+    nirs.SD3D.MeasListAct = nirs.SD.MeasListAct;
+    
+    fprintf("complete. \n");
+
+
+    %%% ==================== CONVERT TO OD ==========================
+
+    fprintf("Converting to OD data ... ");
+
+    % Save original nirs.d to see impact of pruning (conversion later on
+    % will overwrite this)
+    nirs.dOrig = nirs.d;
+
+    % Convert Intensity into Optical Density 
+    nirs.dod = hmrIntensity2OD(nirs.d);
+
+    fprintf("complete. \n");
+    
+    %%% ==================== MOTION CORRECTION ======================
+    
+    fprintf("Correcting motion using spline interpolation ... ");
+
+    % Motion detection
+    if motionDetectHomer == 1
+        % ------- Motion detection using amp and std thresholds (by channel) -------
+        [tInc, tIncCh] = hmrMotionArtifactByChannel(nirs.d, nirs.t, nirs.SD3D, [], params.tMotion, params.tMask, params.STDEVthresh, params.AMPthresh);
+    else
+        % ------- Motion detection using Sobel Filter -------
+        [tInc, tIncCh] = sbSobelDetect(nirs.d, nirs.t, nirs.SD3D, 'buffer', params.tMotion, 'iqrCoeff', params.iqrCoeffSobel);
+    end
+    
+    % Motion correction: spline
+    nirs.dodSpline = hmrMotionCorrectSpline(nirs.dod, nirs.t, nirs.SD, tIncCh, params.pSpline);
+
+    fprintf("complete. \n");
+
+    fprintf("Correcting motion using wavelet denoising ... ");
+    
+    % Motion correction: Wavelet 
+    tic;
+    nirs.dodWavelet = sbPrePhmrMotionCorrectWavelet(nirs.dodSpline, nirs.SD, params.iqrWave);
+    %in case you need to edit something and test - quicker without wavelet:
+    %nirs.dodWavelet = nirs.dodSpline;
+    nirs.timeElapsed.wavelet = toc;
+    
+    % Motion detection (for trial rejection)
+    if motionDetectHomer == 1
+        % ------- Motion detection using amp and std thresholds (by channel) -------
+        [tInc, tIncCh] = hmrMotionArtifactByChannel(nirs.dodWavelet, nirs.t, nirs.SD3D, [], params.tMotion, params.tMask, params.STDEVthresh, params.AMPthresh);
+    else
+        % ------- Motion detection using Sobel Filter -------
+        [tInc, tIncCh] = sbSobelDetect(nirs.dodWavelet, nirs.t, nirs.SD3D, 'buffer', params.tMotion, 'iqrCoeff', params.iqrCoeffSobel);
+    end
+    
+    % Trial rejection
+    [nirs.s, ~] = enStimRejection(nirs.t, nirs.s, tInc, [], params.tRangeRej);
+
+    % Update SD3D with Excluded time periods from various detection points
+    nirs.SD3D.tInc=tInc;
+    nirs.SD3D.tIncCh=tIncCh;
+    nirs.SD.tInc=tInc;
+    nirs.SD.tIncCh=tIncCh;
+    
+    %Force MeasListAct to be the same across wavelengths
+    nirs.SD3D = DOTHUB_balanceMeasListAct(nirs.SD3D);
+    nirs.SD = DOTHUB_balanceMeasListAct(nirs.SD);
+    
+    fprintf("complete. \n");
+    
+    %%% ======================= FILTERING ==============================
+
+    fprintf("Filtering ... ");
+
+    % Bandpass filter
+    nirs.dodFilt = hmrBandpassFilt(nirs.dodWavelet,nirs.t, params.hpf, params.lpf);
+
+    fprintf("complete. \n");
+
+    % ================ CONVERT TO CONCENTRATION ========================
+
+    fprintf("Converting to Concentration data ... ");
+
+    %note dodFilt is the output needed for non-averaged dod data if NOT
+    %using SSR
+    nirs.dc = hmrOD2Conc(nirs.dodFilt,nirs.SD3D, params.dpf); 
+    nirs.dc = nirs.dc*1e6; %Homer works in Molar by default, we use uMolar
+
+    fprintf("complete. \n");
+    
+    %%% ================= SHORT SIGNAL REGRESSION ======================
+    if regressShortSig == 1
+        fprintf("Regressing short signals ... ");
+        tic;
+        nirs.dcNoReg = nirs.dc;
+        nirs.dc = DOTHUB_hmrSSRegressionByChannel(nirs.dc,nirs.SD3D, params.rhoSD_ssThresh, params.flagSSmethod); %This is a custom SS regression script. 
+        nirs.timeElapsed.shortSigReg = toc;
+        fprintf("complete. \n");
+    end
+
+    %%% ================== BLOCK AVERAGING =============================
+
+    fprintf("Block averaging ... ");
+
+    %Block avg
+    if filterBand == 1
+        [nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = hmrBlockAvg(nirs.dc, nirs.s, nirs.t, params.tRange);
+    else 
+        [nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = sbPrePhmrBlockAvgDetrend(nirs.dc, nirs.s, nirs.t, params.tRange);
+    end
+
+    fprintf("complete. \n");
+
+    %%% ========== VARIABLE CONVERSION FOR IMAGE RECONSTRUCTION ========
+
+    fprintf("Converting data back to OD for reconstruction ... ");
+
+    %Convert dcAvg back to dod for reconstruction
+    nirs.dodRecon = DOTHUB_hmrConc2OD((nirs.dcAvg)/1e6, nirs.SD3D, params.dpf); %Note converting back to Molar units here for Homer function
+    nirs.tDOD = nirs.tHRF;
+
+    % ---- Convert dc back to dod for reconstruction ----
+    % needed if using SSR as this is applied to dc data which will change
+    % it *post* converting from dod
+    nirs.dodOrig = nirs.dod; %
+    nirs.dod = DOTHUB_hmrConc2OD((nirs.dc)/1e6, nirs.SD3D, params.dpf); %Note converting back to Molar units here for Homer function
+    
+    fprintf("complete. \n");
+
+    %%% ========== VARIABLE CONVERSION NEURODOT COMPATABILITY ========
+
+    fprintf("Converting OD data back to intensity data for Neurodot analysis ... ");
+
+    %Convert dod back to d for reconstruction in Neurodot
+    nirs.d = sbDotOD2Intensity(nirs.dod, mean(abs(nirs.dOrig),1));
+
+    fprintf("complete. \n");
+    
+    %%% ============== CREATE LOG DATA AND SAVE =======================
+    % Use code snippet from DOTHUB_writePREPRO to define contents of logs:
+    [pathstr, name, ~] = fileparts(partName);
+    ds = datestr(now,'yyyymmDDHHMMSS');
+    nirsFilename = fullfile(pathstr,[name '_' folderAppend '.nirs']);
+    logData(1,:) = {'Created on: '; ds};
+    logData(2,:) = {'Derived from data: ', partName};
+    logData(3,:) = {'Pre-processed using:', mfilename('fullpath')};
+    nirs.logData = logData;
+
+    fprintf("Saving .nirs file ... ");
+
+    save(strcat(nirsOutputsFolderPath, '/', nirsFilename), '-struct', 'nirs');
+
+    fprintf("complete. \n\n");
+
+    % Use code snippet from DOTHUB_writePREPRO to define contents of logs:
+    [pathstr, name, ~] = fileparts(partName);
+    ds = datestr(now,'yyyymmDDHHMMSS');
+    preproFileName = fullfile(preproOutputsFolderPath,[name '.prepro']);
+    logData(1,:) = {'Created on: '; ds};
+    logData(2,:) = {'Derived from data: ', partName};
+    logData(3,:) = {'Pre-processed using:', mfilename('fullpath')};
+  
+%     [prepro, preproFileName] = DOTHUB_writePREPRO([outputsFolderPath filesep preproFileName],logData,nirs.dod,nirs.tDOD,nirs.SD3D,nirs.s,nirs.dcAvg,nirs.dcAvgStd,nirs.tHRF,nirs.CondNames,nirs.SD);
+    [prepro, preproFileName] = DOTHUB_writePREPRO(preproFileName,logData, nirs.dodRecon,nirs.tDOD,nirs.SD3D,nirs.s,nirs.dcAvg,nirs.dcAvgStd,nirs.tHRF,nirs.CondNames,nirs.SD);
+    clear tInc tInc2 tIncCh tIncCh2
+
+    %% Plot prepro HRF results as array map if desired. Make sure you parse the 2D version of the array.
+    conditionToPlot = 2;
+    y = squeeze(prepro.dcAvg(:,:,:,conditionToPlot)); %Crop out chosen condition to plot
+    figure;
+    DOTHUB_LUMOplotArray(y,prepro.tHRF,prepro.SD2D,[-1 1],[0 45], [1 1],[1 2],[],[]);
+    
+
+
+end
