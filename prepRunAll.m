@@ -19,37 +19,38 @@ addpath(genpath('/Users/sambe/Documents/MATLAB/Toolboxes/qt-nirs'))
 addpath(genpath('/Users/sambe/Documents/MATLAB/Toolboxes/DOT-HUB_toolbox'))
 addpath(genpath('/Users/sambe/Documents/GitHubRepositories/preprocessingLumo'))
 
+%% =================== Variables/arguments ======================
 %initialise parameters variable
 params = struct();
 
-%Change cohort variables here (won't change for entire run of script)
-params.dataRawLoc = '/Users/sambe/indigoChecks/fNIRS'; % Main directory with original .nirs data files
-params.dataOutLoc = '/Users/sambe/Data/prep/indigo'; %parent directory for saved pruned files
+% Data location
+params.dataLoc = '/Users/sambe/indigoChecks/fNIRS'; % Main directory with original .nirs data files
 
-%%% ============ Cohort variables/arguments =================
-tasks = {'hand'}; % e.g. 'hand', 'social'
+% Data information
 timepoints = {'01mo', '06mo', '12mo'}; %'01mo', '06mo', '12mo'
+params.task = 'hand';
 
-%%% ======= Processing variables/arguments ============
+% remove SSR for dealing with physiological noise
+params.regrSS = 0;
 
+% add more as necessary: see preprocessLumo.m for more options
+
+%% ======================= Run processing =========================
 
 % Start a parallel pool (specify number of workers)
-%parpool(6);
-
-for iTask = 1:length(tasks)
-
-    params.task = tasks{iTask};
+%parpool(length(timepoints));
     
-    for iTime = 1:length(timepoints)
+for iTime = 1:length(timepoints)
 
-        % Create a local copy of params for each worker
-        paramsLocal = params;
-        params.timepoint = timepoints{iTime};
+    % Create a local copy of params for each worker
+    paramsLocal = params;
+    paramsLocal.timepoint = timepoints{iTime};
 
-        
-    end
-    % Shut down the parallel pool
-    delete(gcp('nocreate'));
+    preprocessLumo(paramsLocal);
+
 end
+
+% Shut down the parallel pool
+delete(gcp('nocreate'));
 
 fprintf("COMPLETE \n")
