@@ -67,50 +67,19 @@ function preprocessLumo(params)
 %                       1 uses the global average of short channels;
 %                       otherwise, the nearest short channel is used
 %
-% Outputs: none to workspace; preprocessed files are saved in folders
-% named according to the required arguments (see above)
+% -------------------------------------------------------------------------
+%
+% Outputs:              preprocessed files are saved in the 'derivatives'
+%                       folder of the parent directory
 %
 % SLB 17/1/2024
 %
 % Edited 25/3/25 to run with preprocessing function in modular form
-%
-
-
 
 
 %% Input processing. Check input arguments and assign where necessary
-% Check *optional* inputs 
-% check for user defined variable arguments
-propertyArgIn = varargin;
-while length(propertyArgIn) >= 2
-    nameArg = propertyArgIn{1};
-    valArg = propertyArgIn{2};
-    %check argument is in required format
-    if ~isnumeric(valArg) && ~islogical(valArg)
-        error("Variable inputs specifying pipeline methods must be numeric or logical. See 'help' for details.")
-    end
-    propertyArgIn = propertyArgIn(3:end);
-    switch nameArg
-        case 'pruneQT'
-            pruneQT = logical(valArg);
-        case 'standardQT'
-            standardQT = logical(valArg);
-        case 'sciThreshold'
-            sciThreshold = logical(valArg);
-        case 'pspThreshold'
-            pspThreshold = logical(valArg);
-        case 'motionDetectHomer'
-            motionDetectHomer = logical(valArg);
-        case 'strictSobel'
-            strictSobel = logical(valArg);
-        case 'filterBand'
-            filterBand = logical(valArg);
-        case 'regressShortSig'
-            regressShortSig = logical(valArg);
-        case 'shortSigMethod'
-            shortSigMethod = valArg;
-    end
-end
+
+params = prepTools.validateInputs(params);
 
 % Assign default values if variable arguments not given
 if ~exist('pruneQT', 'var')
@@ -141,26 +110,6 @@ if ~exist('shortSigMethod', 'var')
     shortSigMethod = 2; %avg of nearest s. channels to S&D of long channel
 end
 
-if ~exist('sciThreshold', 'var') && ~exist('pspThreshold', 'var')
-    sciThreshold = 0.7; %standard for adults - Pollonini et al 2016
-    pspThreshold = 0.1; %standard for adults - Pollonini et al 2016
-end
-
-%% Change name of output folder according to methods used
-
-
-if params.regressShortSig == 1
-    if shortSigMethod == 2
-        ssrName = 'NearestAvgSSR';
-    elseif shortSigMethod == 1
-        ssrName = 'GlobalAvgSSR';
-    else
-        ssrName = 'NearestChannelSSR';
-    end
-else
-    ssrName = 'NoSSR';
-end
-
 %% Change paths depending on the task being analyzed (hand, FC)
 
 inputPath = fullfile(dataRawLoc, cohort, strcat(timepoint, 'mo'), upper(task));
@@ -177,79 +126,7 @@ cd(inputPath)
 sub = dir('*.nirs'); %list folders in directory
 sub = sub(~ismember({sub.name}, {'.', '..', '.DS_Store'})); %remove unneeded folders from list
 
-clear detectName nameArg propertyArgIn valArg varargin
 
-%% Define method parameters
-% Channel pruning
-params.dRange = [1e-03 1e+07]; % Di Lorenzo et al. 2019
-params.SNRthresh = 0; % Di Lorenzo et al. 2019
-params.SDrange = [0 60]; % Frijia et al. 2021
-
-% Motion detection parameters
-params.tMotion = 1; % Di Lorenzo et al. 2019
-params.tMaskPrune = 0; % Want to only consider the motion itself WHEN PRUNING
-params.tMask = 1; % want a buffer of 1s normally (Di Lorenzo et al. 2019)
-params.STDEVthresh = 15; % Di Lorenzo et al. 2019
-params.AMPthresh = 0.4; % Di Lorenzo et al. 2019
-
-%window length, for QT-NIRS and motion-affected sample exclusion
-params.windowSec = 3; 
-% minimum number of motion windows required in order to exclude from pruning
-% calculations
-params.badWindowThresh = 3;
-
-if pruneQT == 1
-    % QT-NIRS parameters
-    % User defined:
-    params.sci_threshold = sci_threshold; 
-    params.psp_threshold = psp_threshold;
-    % Set:
-    params.bpFmin = 1.2; params.bpFmax = 3.2; %Minigawa et al. 2023
-    params.windowSec = 3; %Allows for better motion detection exclusion using windows from QT-NIRS pruning
-    params.windowOverlap = 0; %Pollonini et al 2016
-    params.quality_threshold = 0.75; %change for infants?
-else
-    % Threshold of CV
-    %set as decimal for percentage equivalent, not as integer value!
-    params.CV = 0.08; % Frijia et al. 2020
-end
-   
-params.gui_flag = 0; %change if you want to see the graphics containing qtnirs 'quality' for each channel
-
-% Spline denoising parameter
-params.pSpline = 0.99; % Scholkmann et al 2010
-
-% Wavelet denoising parameter
-params.iqrWave = 0.8; % Molavi and Dumont 2012
-
-% Time range for block averaging and stim rejection
-params.tRange = [-4 18]; %based on fPCA work
-params.tRangeRej = [-4 12]; % Di Lorenzo et al. 2019
-
-% High and low pass filter params
-params.hpf = 0.01; % Di Lorenzo et al. 2019
-params.lpf = 0.5; % Di Lorenzo et al. 2019
-% change params for filter if detrending so only HPF applied
-
-
-%Define SSR parameters
-if regressShortSig == 1
-    params.rhoSD_ssThresh = 10;
-    if shortSigMethod == 2
-        params.flagSSmethod = 4; %Avg of short channels < rhoSSD_ssThresh distance from either source or detector in long channel: Uchitel et al. (2022), Gagnon et al (2012)
-    elseif shortSigMethod == 1
-        params.flagSSmethod = 2; %Avg of short channels: Uchitel et al. (2023), Sato et al (2016)
-    else
-        params.flagSSmethod = 0; %Nearest short channel: Emberson et al (2016); 
-    end
-end
-
-%get number of channels (both chroms)
-nirs = load(sub(1).name, '-mat');
-if ~exist('nirs.SD.MeasListAct', 'var')
-    nirs.SD.MeasListAct = nirs.SD.MeasList(:,3);
-end
-numChansBothChroms = length(nirs.SD.MeasListAct);
 
 %% Run Preprocessing
 for nsub = 1:length(sub)
@@ -262,6 +139,12 @@ for nsub = 1:length(sub)
     % Load .nirs data 
     nirs = load([partName], '-mat');% filesep strcat(partName, '_', upper(task),'.nirs')], '-mat');
     
+    % get (cap specific) number of channels in array
+    if ~exist('nirs.SD.MeasListAct', 'var')
+        nirs.SD.MeasListAct = nirs.SD.MeasList(:,3);
+    end
+    numChansBothChroms = length(nirs.SD.MeasListAct);
+
     % don't preprocess file if it contains NaNs anywhere - sometimes LUFR
     % files contain NaN which are then passed to 'nirs.d' during conversion
     if ~length(find(isnan(nirs.d))) == 0
