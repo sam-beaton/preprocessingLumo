@@ -35,7 +35,7 @@ function preprocessLumo(params)
 % Arguments:            define the pipeline methods
 % (optional)            ----- For Global pipeline set all to 1-----
 %
-% standardQT:          1/True utilises parameter values from Pollonini et
+% standardQT:           1/True utilises parameter values from Pollonini et
 %                       al (2016) for QT;
 %                       otherwise, values should be specified by user
 %
@@ -99,10 +99,11 @@ function preprocessLumo(params)
     matchingFiles = fullfile({fileList.folder}, {fileList.name});
 
 
-    %% Run Preprocessing
+    % Run Preprocessing
     for nsub = 1:length(matchingFiles)
 
         % ------- Load data and initial checks/conversions -------
+
         % (just so cmd window not blank as removed wavelet dwtmode message)
         partName = fileList(nsub).name;
         fprintf(strcat("Preprocessing participant ", num2str(nsub), " - ", partName(5:8), "\n\n"));
@@ -132,231 +133,27 @@ function preprocessLumo(params)
         numChansBothChroms = length(nirs.SD.MeasListAct);
 
         % ------- Channel pruning -------
-    
         fprintf("Pruning channels ... ");
-
         % Detect motion artifacts and prune channels
-        [nirs, ~, ~] = prepTools.pruneChannels(nirs, params);
+        nirs = prepTools.pruneChannels(nirs, params);
+        fprintf("complete. \n");
 
-
-    %%% ==================== PRUNE CHANNELS =======================
-    % Detect motion artifacts (so they can be discounted from channel
-    % pruning calculations in next step)
-    [nirs.SD3D.tInc, nirs.SD3D.tIncCh] = hmrMotionArtifactByChannel(nirs.d, nirs.t, nirs.SD3D, [], params.tMotion, params.tMaskPrune, params.STDEVthresh, params.AMPthresh);
-
-    % Prune channels using Homer prior to QT-NIRS
-    nirs.SD3D = enPruneChannels(nirs.d, nirs.SD3D, nirs.SD3D.tInc, params.dRange, params.SNRthresh, params.SDrange, 0);
-
-    % Update SD2D with outputs from enPruneChannels
-    nirs.SD.MeasListAct = nirs.SD3D.MeasListAct;
-    nirs.SD.MeasListActAuto = nirs.SD3D.MeasListActAuto; %why?
-    nirs.SD.tInc = nirs.SD3D.tInc;
-    nirs.SD.tIncCh = nirs.SD3D.tIncCh;
-
-    tic;
-
-    % ===== Prune noisy channels =====
-    % Initialise variables
-    numChan = numChansBothChroms/2; %number of channels
-    arrayChans = linspace(1, 2*numChan, 2*numChan); %array with num. of each channel
+        % ------- Convert to OD -------
+        fprintf("Converting to OD data ... ");
+        % Convert Intensity into Optical Density 
+        nirs.dod = hmrIntensity2OD(nirs.d);
+        fprintf("complete. \n");
     
-    if pruneQT == 1
-        %ensure both chroms pruned if channel removed by Homer enPrune
-        homChans = find(nirs.SD.MeasListAct == 0);
-        hboChans = homChans(homChans <= numChan) + numChan;        
-        hbrChans = homChans(homChans > numChan) - numChan;
-        homChans = [homChans, hboChans, hbrChans];
-        homChans = unique(homChans);
-        % prune corresponding chrom channels using list 'homChans'
-        nirs.SD.MeasListAct(homChans) = 0;
+        % ------- Motion Correction -------
+        fprintf("Correcting motion ... ");
+        nirs = prepTools.motionCorrect(nirs, params);
+        %nirs = prepTools.motionCorrectNoWave(nirs, params); %for quick testing
+        fprintf("complete. \n");
 
-        % -- Prune channels with QT NIRS -- 
-        qualityMatrices = sbPrePqtnirs( ...
-            nirs, ...
-            'freqCut',[params.bpFmin, params.bpFmax], ...
-            'window', params.windowSec, ...
-            'overlap', params.windowOverlap, ...
-            'qualityThreshold', params.qualityThreshold, ...
-            'sciThreshold', params.sciThreshold, ...
-            'pspThreshold', params.pspThreshold, ...
-            'conditionsMask','all', ...
-            'dodFlag', 0, ...
-            'guiFlag', params.guiFlag);
-
-        % Insert correct values for pruning 
-        % qtnirs changes the channel order during computation so need to find
-        % correct rows which have been pruned first
-        for i = 1:numChansBothChroms
-            %only changes if qualityMatrices val is 0 so as to not override
-            % previous changes by enPruneChannels
-            if qualityMatrices.MeasListAct(i) == 0 
-                iRow = find(nirs.SD.MeasList(:,1) == qualityMatrices.MeasList(i, 1) ...
-                            & nirs.SD.MeasList(:,2) == qualityMatrices.MeasList(i, 2) ...
-                            & nirs.SD.MeasList(:,4) == qualityMatrices.MeasList(i, 4));
-                nirs.SD.MeasListAct(iRow) = 0;
-            end
-        end
-    else
-        % -- Prune channels according to CV --
-        %calculate the sampling frequency
-        fs = 1 / mean(diff(nirs.t)); 
-        
-        % Calculate the number of samples per window
-        windowSizeSamples = floor(params.windowSec * fs);
-        %initialise a matrix for valid samples
-        validSamples = true(size(nirs.d));
-        % Initialise counter for motion detection
-        motionCount = zeros(size(nirs.d));
-
-        %create variables for later SNR calculation
-        windowMotion = zeros([size(arrayChans,2) floor(length(nirs.t)./windowSizeSamples)]);
-        windowTimes = zeros([2 floor(length(nirs.t)./windowSizeSamples)]);
-        windowCount = 0;
-        
-        % Loop through the data in windows in steps of 'windowSizeSamples'
-        for startIdx = 1:windowSizeSamples:(length(nirs.d)-mod(length(nirs.d), windowSizeSamples)) %, excludes final (small) window as in qtnirs
-            endIdx = min(startIdx + windowSizeSamples - 1, size(nirs.d, 1)); % Determine the end of the window
-
-            windowCount = windowCount+1;
-            
-            %store start-/endpoints of window to be used later for snr calc
-            windowTimes(1, windowCount) = startIdx;
-            windowTimes(2, windowCount) = endIdx;
-            
-            % Extract the current window of motion data
-            motionWindow = nirs.SD.tIncCh(startIdx:endIdx, :);
-
-            for iChan = 1:length(arrayChans)
-
-                if nirs.SD.MeasListAct(iChan) == 1
-            
-                    % Check for motion (zeros) in the window
-                    if any(motionWindow(:, iChan) == 0) % If there's motion in the current window
-                        validSamples(startIdx:endIdx, iChan) = false; % Mark these samples as invalid
-                        windowMotion(iChan, windowCount) = true; % mark the window as one containing motion
-                    end
-
-                end
-            end
-        end
-        
-        % Apply the mask to nirs.d to exclude samples from motion windows
-
-        %initialise CV
-        CV = zeros([1 numChansBothChroms]);
-        %initialise matrix with 'good' 
-        idGoodChan = zeros([1 numChansBothChroms]);
-
-        % calculate CV on channel by channel basis, using only motion-free
-        % segments
-        for iChan = 1:numChan
-
-            CV(iChan) = nanstd(nirs.d(find(validSamples(:,iChan) == 1), iChan)) / nanmean(nirs.d(find(validSamples(:,iChan) == 1), iChan));
-
-        end
-
-        for iChan = 1:numChan
-            if abs(CV(iChan) - CV(iChan+numChan)) < params.CV
-                idGoodChan(iChan) = 1;
-                idGoodChan(iChan+numChan) = 1;
-            end
-        end
-        
-        %check for channels which have already been pruned
-        idGoodChan = intersect(find(idGoodChan), find(nirs.SD.MeasListAct));
-
-        % array for 'good' channels
-        goodChans = zeros(numChansBothChroms, 1); 
-
-        % Set elements of goodChan to 1 according to CV val. above/below thresh
-        goodChans(idGoodChan) = 1;
-
-        %find channels where both chroms are retained (reuse idGoodChan)
-        goodChans = goodChans(1:numChan) + goodChans(numChan+1:end);
-        idGoodChan = find(goodChans == 2);
-
-        %account once again for the multiple chromophores
-        idGoodChan = [idGoodChan; idGoodChan + numChan];
-
-        % Set all channels except those in the 'good' list to 0, in the SD
-        % variable
-        nirs.SD.MeasListAct(setdiff(arrayChans,idGoodChan)) = 0;
-
-    end
-
-    nirs.timeElapsed.pruning = toc;
-
-    %Ensure SD3D and SD MeasListAct variables match after QT-NIRS/CV
-    %pruning
-    nirs.SD3D.MeasList = nirs.SD.MeasList; %shouldn't have changed?
-    nirs.SD3D.MeasListAct = nirs.SD.MeasListAct;
-    
-    fprintf("complete. \n");
-
-
-    %%% ==================== CONVERT TO OD ==========================
-
-    fprintf("Converting to OD data ... ");
-
-    % Save original nirs.d to see impact of pruning (conversion later on
-    % will overwrite this)
-    nirs.dOrig = nirs.d;
-
-    % Convert Intensity into Optical Density 
-    nirs.dod = hmrIntensity2OD(nirs.d);
-
-    fprintf("complete. \n");
-    
-    %%% ==================== MOTION CORRECTION ======================
-    
-    fprintf("Correcting motion using spline interpolation ... ");
-
-    % Motion detection
-    if motionDetectHomer == 1
-        % ------- Motion detection using amp and std thresholds (by channel) -------
-        [tInc, tIncCh] = hmrMotionArtifactByChannel(nirs.d, nirs.t, nirs.SD3D, [], params.tMotion, params.tMask, params.STDEVthresh, params.AMPthresh);
-    else
-        % ------- Motion detection using Sobel Filter -------
-        [tInc, tIncCh] = sbSobelDetect(nirs.d, nirs.t, nirs.SD3D, 'buffer', params.tMotion, 'iqrCoeff', params.iqrCoeffSobel);
-    end
-    
-    % Motion correction: spline
-    nirs.dodSpline = hmrMotionCorrectSpline(nirs.dod, nirs.t, nirs.SD, tIncCh, params.pSpline);
-
-    fprintf("complete. \n");
-
-    fprintf("Correcting motion using wavelet denoising ... ");
-    
-    % Motion correction: Wavelet 
-    tic;
-    nirs.dodWavelet = sbPrePhmrMotionCorrectWavelet(nirs.dodSpline, nirs.SD, params.iqrWave);
-    %in case you need to edit something and test - quicker without wavelet:
-    %nirs.dodWavelet = nirs.dodSpline;
-    nirs.timeElapsed.wavelet = toc;
-    
-    % Motion detection (for trial rejection)
-    if motionDetectHomer == 1
-        % ------- Motion detection using amp and std thresholds (by channel) -------
-        [tInc, tIncCh] = hmrMotionArtifactByChannel(nirs.dodWavelet, nirs.t, nirs.SD3D, [], params.tMotion, params.tMask, params.STDEVthresh, params.AMPthresh);
-    else
-        % ------- Motion detection using Sobel Filter -------
-        [tInc, tIncCh] = sbSobelDetect(nirs.dodWavelet, nirs.t, nirs.SD3D, 'buffer', params.tMotion, 'iqrCoeff', params.iqrCoeffSobel);
-    end
-    
-    % Trial rejection
-    [nirs.s, ~] = enStimRejection(nirs.t, nirs.s, tInc, [], params.tRangeRej);
-
-    % Update SD3D with Excluded time periods from various detection points
-    nirs.SD3D.tInc=tInc;
-    nirs.SD3D.tIncCh=tIncCh;
-    nirs.SD.tInc=tInc;
-    nirs.SD.tIncCh=tIncCh;
-    
-    %Force MeasListAct to be the same across wavelengths
-    nirs.SD3D = DOTHUB_balanceMeasListAct(nirs.SD3D);
-    nirs.SD = DOTHUB_balanceMeasListAct(nirs.SD);
-    
-    fprintf("complete. \n");
+        % ------- Motion Rejection -------
+        fprintf("Removing trials with persistent noise ... ");
+        nirs = prepTools.motionReject(nirs, params);
+        fprintf("complete. \n");
     
     %%% ======================= FILTERING ==============================
 
