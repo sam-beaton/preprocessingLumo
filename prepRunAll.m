@@ -24,14 +24,14 @@ addpath(genpath('/Users/sambe/Documents/GitHubRepositories/preprocessingLumo'))
 params = struct();
 
 % Data location
-params.dataLoc = '/Users/sambe/indigoChecks/fNIRS'; % Main directory with original .nirs data files
+params.dataLoc = '/Users/sambe/dot/nirs'; % Main directory with original .nirs data files
 
 % Data information
 timepoints = {'01mo', '06mo', '12mo'}; %'01mo', '06mo', '12mo'
 params.task = 'hand';
 
 % remove SSR for dealing with physiological noise
-params.regrSS = 0;
+%params.regrSS = 0;
 
 % add more as necessary: see preprocessLumo.m for more options
 
@@ -46,7 +46,7 @@ for iTime = 1:length(timepoints)
     paramsLocal = params;
     paramsLocal.timepoint = timepoints{iTime};
 
-    preprocessLumo(paramsLocal);
+    prepTools.preprocessLumo(paramsLocal);
 
 end
 

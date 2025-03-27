@@ -11,7 +11,7 @@ if ~isfield(params, 'task')
     error("Must provide valid task.  See 'help' for details")
 end
 
-if ~isfield(params, 'task')
+if ~isfield(params, 'timepoint')
     error("Must provide valid timepoint.  See 'help' for details")
 end
 
@@ -19,48 +19,82 @@ end
 %% DEFAULTS:
 
 % Saturated/low signal channel removal
-params.dRange = [1e-03 1e+07]; % Di Lorenzo et al. 2019
-params.SNRthresh = 0; % Di Lorenzo et al. 2019
-params.SDrange = [0 60]; % Frijia et al. 2021
+if ~isfield(params, 'dRange')
+    params.dRange = [1e-03 1e+07]; % Di Lorenzo et al. 2019
+end
+if ~isfield(params, 'snrThresh')
+    params.SNRthresh = 0; % Di Lorenzo et al. 2019
+end
+if ~isfield(params, 'sdRange')
+    params.SDrange = [0 60]; % Frijia et al. 2021
+end
 
 %% Motion detection parameters
-params.tMotion = 1; % Di Lorenzo et al. 2019
-params.tMaskPrune = 0; % Want to only consider the motion itself WHEN PRUNING
-params.tMask = 1; % want a buffer of 1s normally (Di Lorenzo et al. 2019)
-params.STDEVthresh = 15; % Di Lorenzo et al. 2019
-params.AMPthresh = 0.4; % Di Lorenzo et al. 2019
-
-%% Channel pruning
-if ~exist('sciThreshold', 'var') && ~exist('pspThreshold', 'var')
-    sciThreshold = 0.7; %standard for adults - Pollonini et al 2016
-    pspThreshold = 0.1; %standard for adults - Pollonini et al 2016
+if ~isfield(params, 'tMotion')
+    params.tMotion = 1; % Di Lorenzo et al. 2019
 end
+if ~isfield(params, 'tMarkPrune')
+    params.tMaskPrune = 0; % Want to only consider the motion itself WHEN PRUNING
+end
+if ~isfield(params, 'tMask')
+    params.tMask = 1; % want a buffer of 1s normally (Di Lorenzo et al. 2019)
+end
+if ~isfield(params, 'STDEVthresh')
+    params.STDEVthresh = 15; % Di Lorenzo et al. 2019
+end
+if ~isfield(params, 'AMPthresh')
+    params.AMPthresh = 0.4; % Di Lorenzo et al. 2019
+end
+
+%% Channel pruning 
+if ~isfield(params, 'sciThreshold')
+    switch params.timepoint
+        case '01mo'
+            params.sciThreshold = 0.7; %standard for adults - Pollonini et al 2016
+        case '06mo'
+            params.sciThreshold = 0.7; %standard for adults - Pollonini et al 2016
+        case '12mo'
+            params.sciThreshold = 0.7; %standard for adults - Pollonini et al 2016
+    end
+end
+if ~isfield(params, 'pspThreshold')
+    switch params.timepoint
+        case '01mo'
+            params.pspThreshold = 0.1; %standard for adults - Pollonini et al 2016
+        case '06mo'
+            params.pspThreshold = 0.1; %standard for adults - Pollonini et al 2016
+        case '12mo'
+            params.pspThreshold = 0.1; %standard for adults - Pollonini et al 2016
+    end
+end
+
 %window length, for QT-NIRS and motion-affected sample exclusion
-params.windowSec = 3; 
-% minimum number of motion windows required in order to exclude from pruning
-% calculations
-params.badWindowThresh = 3;
-
-if pruneQT == 1
-    % QT-NIRS parameters
-    % User defined:
-    params.sci_threshold = sci_threshold; 
-    params.psp_threshold = psp_threshold;
-    % Set:
-    params.bpFmin = 1.2; params.bpFmax = 3.2; %Minigawa et al. 2023
-    params.windowSec = 3; %Allows for better motion detection exclusion using windows from QT-NIRS pruning
-    params.windowOverlap = 0; %Pollonini et al 2016
-    params.quality_threshold = 0.75; %change for infants?
-else
-    % Threshold of CV
-    %set as decimal for percentage equivalent, not as integer value!
-    params.CV = 0.08; % Frijia et al. 2020
+if ~isfield(params, 'windowSec')
+    params.windowSec = 3; 
+end
+% minimum number of motion windows before exclusion from pruning
+if ~isfield(params, 'badWindowThresh')
+    params.badWindowThresh = 3;
 end
 
-params.gui_flag = 0; %change if you want to see the graphics containing qtnirs 'quality' for each channel
+% heartrate bandpass
+if ~isfield(params, 'bpFmin')
+    params.bpFmin = 1.2; 
+end
+if ~isfield(params, 'bpFmax')
+    params.bpFmax = 3.2; %Minigawa et al. 2023
+end
 
-
-%% DPF for  
+%misc. parameters
+if ~isfield(params, 'qualityThreshold')
+    params.qualityThreshold = 0.75;
+end
+if ~isfield(params, 'windowOverlap')
+    params.windowOverlap = 0; %Pollonini et al 2016
+end
+if ~isfield(params, 'guiFlag')
+    params.guiFlag = 0; %change to see the graphics containing qtnirs 'quality' for each channel
+end
 
 %% Spline denoising parameter
 if ~isfield(params, 'pSpline')

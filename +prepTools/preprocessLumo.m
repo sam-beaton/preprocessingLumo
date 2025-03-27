@@ -77,117 +77,80 @@ function preprocessLumo(params)
 % Edited 25/3/25 to run with preprocessing function in modular form
 
 
-%% Input processing. Check input arguments and assign where necessary
-
-params = prepTools.validateInputs(params);
-
-% Assign default values if variable arguments not given
-if ~exist('pruneQT', 'var')
-    pruneQT = true; %prune using QT-NIRS by default
-end
-
-if ~exist('standardQT', 'var')
-    standardQT = true; %use default parameters for QT-NIRS
-end
-
-if ~exist('motionDetectHomer', 'var')
-    motionDetectHomer = true;
-end
-
-if ~exist('strictSobel', 'var')
-    strictSobel = true; 
-end
-
-if ~exist('filterBand', 'var')
-    filterBand = true; % bandpass filter by default
-end
-
-if ~exist('regressShortSig', 'var')
-    regressShortSig = true; %regress by default
-end
-
-if ~exist('shortSigMethod', 'var')
-    shortSigMethod = 2; %avg of nearest s. channels to S&D of long channel
-end
-
-%% Change paths depending on the task being analyzed (hand, FC)
-
-inputPath = fullfile(dataRawLoc, cohort, strcat(timepoint, 'mo'), upper(task));
-folderAppend = strcat(pruneName, '_', ssrName); %according to pipeline methods above
-nirsOutputsFolderPath = fullfile(dataOutLoc, cohort, strcat(timepoint, 'mo'), upper(task), 'nirs', folderAppend);
-preproOutputsFolderPath = fullfile(dataOutLoc, cohort, strcat(timepoint, 'mo'), upper(task), 'prepro', folderAppend);
-if ~isfolder(nirsOutputsFolderPath)
-    mkdir(nirsOutputsFolderPath);
-end
-if ~isfolder(preproOutputsFolderPath)
-    mkdir(preproOutputsFolderPath);
-end
-cd(inputPath)
-sub = dir('*.nirs'); %list folders in directory
-sub = sub(~ismember({sub.name}, {'.', '..', '.DS_Store'})); %remove unneeded folders from list
+    %% Input processing. Check input arguments and assign where necessary
+    params = prepTools.validateInputs(params);
 
 
-
-%% Run Preprocessing
-for nsub = 1:length(sub)
-
-    % -------Print participant number -------
-    % (just so cmd window not blank as removed wavelet dwtmode message)
-    partName = sub(nsub).name;
-    fprintf(strcat("Preprocessing participant ", num2str(nsub), " - ", partName(1:4), "\n\n"));
-    
-    % Load .nirs data 
-    nirs = load([partName], '-mat');% filesep strcat(partName, '_', upper(task),'.nirs')], '-mat');
-    
-    % get (cap specific) number of channels in array
-    if ~exist('nirs.SD.MeasListAct', 'var')
-        nirs.SD.MeasListAct = nirs.SD.MeasList(:,3);
-    end
-    numChansBothChroms = length(nirs.SD.MeasListAct);
-
-    % don't preprocess file if it contains NaNs anywhere - sometimes LUFR
-    % files contain NaN which are then passed to 'nirs.d' during conversion
-    if ~length(find(isnan(nirs.d))) == 0
-        % print message notifying user
-        nanErrorMsg = strcat("File ", partName, " could not be processed: data contains NaNs \n\n");
-        fprintf(nanErrorMsg);
-        continue
+    %% Create output directory if necessary
+    nirsOutputPath = fullfile(params.dataLoc, 'derivatives', 'preproc');
+    if ~isfolder(nirsOutputPath)
+        mkdir(nirsOutputPath);
     end
 
-    % define differential pathlength factor (age and gamma dependant)
-    ageYears = str2num(timepoint) / 12;
-    [DPF1, DPF2] = sbPrePCalcDPF(ageYears, nirs.SD.Lambda(1), nirs.SD.Lambda(2));
-    params.dpf = [DPF1 DPF2]; 
+    %% Change path and search for task files 
+    % change directory 
+    cd(params.dataLoc);
+    % Recursively get all .nirs fiels with correct task and age
+    timepointNum = str2double(params.timepoint(1:2)); % Converts '01' -> 1, '48' -> 48
+    timepointNum = sprintf('%02d', timepointNum); % Ensures zero-padded format
+    fileList = dir(fullfile(params.dataLoc, '**', sprintf('*ses-%s*task-%s*.nirs', timepointNum, params.task)));
 
-    %calculate the sampling frequency
-    fs = 1 / mean(diff(nirs.t)); 
-    
-    
-    % --- Run data quality checks ---
-    % this produces multiple figures, so comment out for speed
-    %DOTHUB_dataQualityCheck(nirsFileName);
-    %disp('Examine data quality figures, press any key to continue');
-    %pause 
-    
+    % Extract file paths directly
+    matchingFiles = fullfile({fileList.folder}, {fileList.name});
 
-    % ------- Update sampling frequency (if necessary) -------
-    %nirs.t = 0:1/fs:(size(nirs.d,1)-1)/fs; %-1 to retain size of t, given starting at 0
+
+    %% Run Preprocessing
+    for nsub = 1:length(matchingFiles)
+
+        % ------- Load data and initial checks/conversions -------
+
+        % (just so cmd window not blank as removed wavelet dwtmode message)
+        partName = fileList(nsub).name;
+        fprintf(strcat("Preprocessing participant ", num2str(nsub), " - ", partName(5:8), "\n\n"));
+
+        % Load subject data
+        [nirs, ~] = prepTools.loadSubjectData(matchingFiles{nsub});
+
+        % double-check on NaNs in nirs.d, but these should have been
+        % removed during task cutting
+        if ~length(find(isnan(nirs.d))) == 0
+            % print message notifying of NaNs
+            nanErrorMsg = strcat("File ", partName, " could not be processed: data contains NaNs \n\n");
+            fprintf(nanErrorMsg);
+            continue
+        end
+
+        % Calculate DPF for age
+        params.dpf = prepTools.calculateDPF(str2double(timepointNum), nirs, 1);
+
+        %calculate the sampling frequency
+        fs = 1 / mean(diff(nirs.t)); 
     
-    fprintf("Pruning channels ... ");
+        % get (cap specific) number of channels in array
+        if ~exist('nirs.SD.MeasListAct', 'var')
+            nirs.SD.MeasListAct = nirs.SD.MeasList(:,3);
+        end
+        numChansBothChroms = length(nirs.SD.MeasListAct);
+
+        % ------- Channel pruning -------
+        fprintf("Pruning channels ... ");
+        % Detect motion artifacts and prune channels
+        [nirs, ~, ~] = prepTools.pruneChannels(nirs, params);
+        fprintf("complete. \n");
+
+
+        % ------- Convert to OD -------
+        fprintf("Converting to OD data ... ");
+        % Convert Intensity into Optical Density 
+        nirs.dod = hmrIntensity2OD(nirs.d);
+        fprintf("complete. \n");
+
 
     %%% ==================== PRUNE CHANNELS =======================
     % Detect motion artifacts (so they can be discounted from channel
     % pruning calculations in next step)
     [nirs.SD3D.tInc, nirs.SD3D.tIncCh] = hmrMotionArtifactByChannel(nirs.d, nirs.t, nirs.SD3D, [], params.tMotion, params.tMaskPrune, params.STDEVthresh, params.AMPthresh);
 
-% Sobel filter removes too much data - ignore!
-%     if motionDetectHomer == 1
-%         % ------- Motion detection using amp and std thresholds (by channel) -------
-%         [tInc] = hmrMotionArtifact(nirs.d, nirs.t, nirs.SD3D, [], params.tMotion, params.tMask, params.STDEVthresh, params.AMPthresh);
-%     else
-%         % ------- Motion detection using Sobel Filter -------
-%         [tInc, ~] = sbSobelDetect(nirs.d, nirs.t, nirs.SD3D, 'buffer', params.tMotion, 'iqrCoeff', params.iqrCoeffSobel);
-%     end 
     % Prune channels using Homer prior to QT-NIRS
     nirs.SD3D = enPruneChannels(nirs.d, nirs.SD3D, nirs.SD3D.tInc, params.dRange, params.SNRthresh, params.SDrange, 0);
 
@@ -220,12 +183,12 @@ for nsub = 1:length(sub)
             'freqCut',[params.bpFmin, params.bpFmax], ...
             'window', params.windowSec, ...
             'overlap', params.windowOverlap, ...
-            'qualityThreshold', params.quality_threshold, ...
-            'sciThreshold', params.sci_threshold, ...
-            'pspThreshold', params.psp_threshold, ...
+            'qualityThreshold', params.qualityThreshold, ...
+            'sciThreshold', params.sciThreshold, ...
+            'pspThreshold', params.pspThreshold, ...
             'conditionsMask','all', ...
             'dodFlag', 0, ...
-            'guiFlag', params.gui_flag);
+            'guiFlag', params.guiFlag);
 
         % Insert correct values for pruning 
         % qtnirs changes the channel order during computation so need to find
@@ -482,7 +445,7 @@ for nsub = 1:length(sub)
 
     fprintf("Saving .nirs file ... ");
 
-    save(strcat(nirsOutputsFolderPath, '/', nirsFilename), '-struct', 'nirs');
+    save(strcat(nirsOutputPath, '/', nirsFilename), '-struct', 'nirs');
 
     fprintf("complete. \n\n");
 
