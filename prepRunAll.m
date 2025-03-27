@@ -23,8 +23,11 @@ addpath(genpath('/Users/sambe/Documents/GitHubRepositories/preprocessingLumo'))
 %initialise parameters variable
 params = struct();
 
-% Data location
-params.dataLoc = '/Users/sambe/dot/nirs'; % Main directory with original .nirs data files
+% Data locations
+% directory with original .nirs data files:
+params.dataLoc = '/Users/sambe/dot/nirs';
+% directory where processed files will be saved, in a new sub-directory:
+params.saveLoc = '/Users/sambe/dot/derivatives'; 
 
 % Data information
 timepoints = {'01mo', '06mo', '12mo'}; %'01mo', '06mo', '12mo'

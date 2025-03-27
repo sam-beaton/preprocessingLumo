@@ -80,11 +80,11 @@ function preprocessLumo(params)
     %% Input processing. Check input arguments and assign where necessary
     params = prepTools.validateInputs(params);
 
-
     %% Create output directory if necessary
-    nirsOutputPath = fullfile(params.dataLoc, 'derivatives', 'preproc');
-    if ~isfolder(nirsOutputPath)
-        mkdir(nirsOutputPath);
+    preprocDirName = 'preproc-standard'; % defined as variable as used later
+    preprocDir = fullfile(params.saveLoc, preprocDirName);
+    if ~isfolder(preprocDir)
+        mkdir(preprocDir);
     end
 
     %% Change path and search for task files 
@@ -100,7 +100,9 @@ function preprocessLumo(params)
 
 
     % Run Preprocessing
-    for nsub = 1:length(matchingFiles)
+    for nsub = 1%:length(matchingFiles)
+
+        tic
 
         % ------- Load data and initial checks/conversions -------
 
@@ -136,6 +138,7 @@ function preprocessLumo(params)
         fprintf("Pruning channels ... ");
         % Detect motion artifacts and prune channels
         nirs = prepTools.pruneChannels(nirs, params);
+        %fprintf("NEED TO ADD CHANNEL PRUNING BACK INTO PIPELINE ...");
         fprintf("complete. \n");
 
         % ------- Convert to OD -------
@@ -146,8 +149,9 @@ function preprocessLumo(params)
     
         % ------- Motion Correction -------
         fprintf("Correcting motion ... ");
-        %nirs = prepTools.motionCorrect(nirs, params);
-        nirs = prepTools.motionCorrectNoWave(nirs, params); %for quick testing
+        nirs = prepTools.motionCorrect(nirs, params);
+        %for quick testing:
+        %nirs = prepTools.motionCorrectNoWave(nirs, params); fprintf("NEED TO ADD WAVELET DENOISING BACK INTO PIPELINE ..."); 
         fprintf("complete. \n");
 
         % ------- Motion Rejection -------
@@ -191,39 +195,33 @@ function preprocessLumo(params)
         fprintf("complete. \n");
         
         %%% ============== CREATE LOG DATA AND SAVE =======================
-        % Use code snippet from DOTHUB_writePREPRO to define contents of logs:
-        [pathstr, name, ~] = fileparts(partName);
+        % Use original filename to define save directory and new filename
+        splits = strsplit(partName, '_');
+        taskSplit = strsplit(splits{3}, '-');
+        nameSplit = strsplit(partName, '.');
+        nirsSavePath = fullfile(preprocDir, ...
+                                splits{1}, ...
+                                splits{2}, ...
+                                taskSplit{2});
+        if ~isfolder(nirsSavePath)
+            mkdir(nirsSavePath);
+        end 
+        nirsFilename = [nameSplit{1} '_' preprocDirName '.nirs'];
+
+        % create log data
         ds = datestr(now,'yyyymmDDHHMMSS');
-        nirsFilename = fullfile(pathstr,[name '_' folderAppend '.nirs']);
         logData(1,:) = {'Created on: '; ds};
         logData(2,:) = {'Derived from data: ', partName};
         logData(3,:) = {'Pre-processed using:', mfilename('fullpath')};
         nirs.logData = logData;
-    
+        
+        % save file
         fprintf("Saving .nirs file ... ");
-    
-        save(strcat(nirsOutputPath, '/', nirsFilename), '-struct', 'nirs');
-    
+        save(fullfile(nirsSavePath, nirsFilename), '-struct', 'nirs');
         fprintf("complete. \n\n");
-    
-        % Use code snippet from DOTHUB_writePREPRO to define contents of logs:
-        [pathstr, name, ~] = fileparts(partName);
-        ds = datestr(now,'yyyymmDDHHMMSS');
-        preproFileName = fullfile(preproOutputsFolderPath,[name '.prepro']);
-        logData(1,:) = {'Created on: '; ds};
-        logData(2,:) = {'Derived from data: ', partName};
-        logData(3,:) = {'Pre-processed using:', mfilename('fullpath')};
+
+        toc
       
-    %     [prepro, preproFileName] = DOTHUB_writePREPRO([outputsFolderPath filesep preproFileName],logData,nirs.dod,nirs.tDOD,nirs.SD3D,nirs.s,nirs.dcAvg,nirs.dcAvgStd,nirs.tHRF,nirs.CondNames,nirs.SD);
-        %[prepro, preproFileName] = DOTHUB_writePREPRO(preproFileName,logData, nirs.dodRecon,nirs.tDOD,nirs.SD3D,nirs.s,nirs.dcAvg,nirs.dcAvgStd,nirs.tHRF,nirs.CondNames,nirs.SD);
-    clear tInc tInc2 tIncCh tIncCh2
-
-    %% Plot prepro HRF results as array map if desired. Make sure you parse the 2D version of the array.
-    conditionToPlot = 2;
-    y = squeeze(prepro.dcAvg(:,:,:,conditionToPlot)); %Crop out chosen condition to plot
-    figure;
-    DOTHUB_LUMOplotArray(y,prepro.tHRF,prepro.SD2D,[-1 1],[0 45], [1 1],[1 2],[],[]);
-    
-
+    end
 
 end
