@@ -135,7 +135,7 @@ function preprocessLumo(params)
         % ------- Channel pruning -------
         fprintf("Pruning channels ... ");
         % Detect motion artifacts and prune channels
-        [nirs, ~, ~] = prepTools.pruneChannels(nirs, params);
+        nirs = prepTools.pruneChannels(nirs, params);
         fprintf("complete. \n");
 
 

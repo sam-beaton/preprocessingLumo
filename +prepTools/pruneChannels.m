@@ -1,4 +1,4 @@
-function [nirs, qualityMatrices, windowInfo] = pruneChannels(nirs, params)
+function [nirs] = pruneChannels(nirs, params)
 
 % Master function for pruning low-quality channels from the NIRS data. 
 % Detects motion artifacts, applies initial channel pruning using Homer, 
@@ -16,15 +16,8 @@ function [nirs, qualityMatrices, windowInfo] = pruneChannels(nirs, params)
 
     % Get number of channels (both chromophores)
     numChan = length(nirs.SD.MeasListAct)/2;
-    arrayChans = linspace(1, 2*numChan, 2*numChan);
     
     % QT-NIRS pruning
-    [nirs, qualityMatrices] = pruneTools.pruneWithQT(nirs, params, numChan);
-    
-    % Extract window information for SNR calculation
-    windowInfo.windowSizeSamples = qualityMatrices.sampPerWindow;
-    windowInfo.windowCount = qualityMatrices.n_windows;
-    windowInfo.windowMotion = qualityMatrices.valid_windows;
-    windowInfo.windowTimes = qualityMatrices.window_times;
+    [nirs, ~] = pruneTools.pruneWithQT(nirs, params, numChan);
 
 end
