@@ -162,15 +162,12 @@ function preprocessLumo(params)
         fprintf("complete. \n");
 
         % ------- Convert to concentration data -------
-
         fprintf("Converting to Concentration data ... ");
-
-    %note dodFilt is the output needed for non-averaged dod data if NOT
-    %using SSR
-    nirs.dc = hmrOD2Conc(nirs.dodFilt,nirs.SD3D, params.dpf); 
-    nirs.dc = nirs.dc*1e6; %Homer works in Molar by default, we use uMolar
-
-    fprintf("complete. \n");
+        %note dodFilt is the output needed for non-averaged dod data if NOT
+        %using SSR
+        nirs.dc = hmrOD2Conc(nirs.dod, nirs.SD3D, params.dpf); 
+        %nirs.dc = nirs.dc*1e6; %Homer works in Molar by default, we use uMolar
+        fprintf("complete. \n");
     
     %%% ================= SHORT SIGNAL REGRESSION ======================
     if regressShortSig == 1

@@ -115,10 +115,10 @@ if ~isfield(params, 'tRangeRej')
 end
 
 %% High and low pass filter params
-if ~isfield(params, 'tRangeRej')
+if ~isfield(params, 'hpf')
     params.hpf = 0.02; % based on drift component in fPCA analysis during BRIGHT work
 end
-if ~isfield(params, 'tRangeRej')
+if ~isfield(params, 'lpf')
     params.lpf = 0.5; % Di Lorenzo et al. 2019
 end
 
