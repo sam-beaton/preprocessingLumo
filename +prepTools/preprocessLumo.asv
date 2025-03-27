@@ -146,8 +146,8 @@ function preprocessLumo(params)
     
         % ------- Motion Correction -------
         fprintf("Correcting motion ... ");
-        nirs = prepTools.motionCorrect(nirs, params);
-        %nirs = prepTools.motionCorrectNoWave(nirs, params); %for quick testing
+        %nirs = prepTools.motionCorrect(nirs, params);
+        nirs = prepTools.motionCorrectNoWave(nirs, params); %for quick testing
         fprintf("complete. \n");
 
         % ------- Motion Rejection -------
@@ -169,80 +169,62 @@ function preprocessLumo(params)
         %nirs.dc = nirs.dc*1e6; %Homer works in Molar by default, we use uMolar
         fprintf("complete. \n");
     
-    %%% ================= SHORT SIGNAL REGRESSION ======================
-    if regressShortSig == 1
-        fprintf("Regressing short signals ... ");
-        tic;
-        nirs.dcNoReg = nirs.dc;
-        nirs.dc = DOTHUB_hmrSSRegressionByChannel(nirs.dc,nirs.SD3D, params.rhoSD_ssThresh, params.flagSSmethod); %This is a custom SS regression script. 
-        nirs.timeElapsed.shortSigReg = toc;
-        fprintf("complete. \n");
-    end
+        % ------- Shot signal regression -------
+        if params.regrSS == 1
+            fprintf("Regressing short signals ... ");
+            nirs.dc = DOTHUB_hmrSSRegressionByChannel(nirs.dc,nirs.SD3D, params.rhoSD_ssThresh, params.flagSSmethod);
+            fprintf("complete. \n");
+        end
 
-    %%% ================== BLOCK AVERAGING =============================
-
-    fprintf("Block averaging ... ");
-
-    %Block avg
-    if filterBand == 1
+        % ------- Block averaging -------
+        fprintf("Block averaging ... ");
         [nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = hmrBlockAvg(nirs.dc, nirs.s, nirs.t, params.tRange);
-    else 
-        [nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = sbPrePhmrBlockAvgDetrend(nirs.dc, nirs.s, nirs.t, params.tRange);
-    end
+        %[nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = sbPrePhmrBlockAvgDetrend(nirs.dc, nirs.s, nirs.t, params.tRange);
+        fprintf("complete. \n");
 
-    fprintf("complete. \n");
-
-    %%% ========== VARIABLE CONVERSION FOR IMAGE RECONSTRUCTION ========
-
-    fprintf("Converting data back to OD for reconstruction ... ");
-
-    %Convert dcAvg back to dod for reconstruction
-    nirs.dodRecon = DOTHUB_hmrConc2OD((nirs.dcAvg)/1e6, nirs.SD3D, params.dpf); %Note converting back to Molar units here for Homer function
-    nirs.tDOD = nirs.tHRF;
-
-    % ---- Convert dc back to dod for reconstruction ----
-    % needed if using SSR as this is applied to dc data which will change
-    % it *post* converting from dod
-    nirs.dodOrig = nirs.dod; %
-    nirs.dod = DOTHUB_hmrConc2OD((nirs.dc)/1e6, nirs.SD3D, params.dpf); %Note converting back to Molar units here for Homer function
+        % ------- Variable conversion for compatibility with NeuroDOT -------
+        fprintf("Converting data back to OD for reconstruction ... ");
+        %Convert dc back to dod 
+        nirs.dod = DOTHUB_hmrConc2OD(nirs.dc, nirs.SD3D, params.dpf);
+        %Convert dcAvg back to dod 
+        nirs.d = DOTHUB_hmrConc2OD(nirs.dcAvg, nirs.SD3D, params.dpf);
+        fprintf("complete. \n");
     
-    fprintf("complete. \n");
-
-    %%% ========== VARIABLE CONVERSION NEURODOT COMPATABILITY ========
-
-    fprintf("Converting OD data back to intensity data for Neurodot analysis ... ");
-
-    %Convert dod back to d for reconstruction in Neurodot
-    nirs.d = sbDotOD2Intensity(nirs.dod, mean(abs(nirs.dOrig),1));
-
-    fprintf("complete. \n");
+        %%% ========== VARIABLE CONVERSION NEURODOT COMPATABILITY ========
     
-    %%% ============== CREATE LOG DATA AND SAVE =======================
-    % Use code snippet from DOTHUB_writePREPRO to define contents of logs:
-    [pathstr, name, ~] = fileparts(partName);
-    ds = datestr(now,'yyyymmDDHHMMSS');
-    nirsFilename = fullfile(pathstr,[name '_' folderAppend '.nirs']);
-    logData(1,:) = {'Created on: '; ds};
-    logData(2,:) = {'Derived from data: ', partName};
-    logData(3,:) = {'Pre-processed using:', mfilename('fullpath')};
-    nirs.logData = logData;
-
-    fprintf("Saving .nirs file ... ");
-
-    save(strcat(nirsOutputPath, '/', nirsFilename), '-struct', 'nirs');
-
-    fprintf("complete. \n\n");
-
-    % Use code snippet from DOTHUB_writePREPRO to define contents of logs:
-    [pathstr, name, ~] = fileparts(partName);
-    ds = datestr(now,'yyyymmDDHHMMSS');
-    preproFileName = fullfile(preproOutputsFolderPath,[name '.prepro']);
-    logData(1,:) = {'Created on: '; ds};
-    logData(2,:) = {'Derived from data: ', partName};
-    logData(3,:) = {'Pre-processed using:', mfilename('fullpath')};
-  
-%     [prepro, preproFileName] = DOTHUB_writePREPRO([outputsFolderPath filesep preproFileName],logData,nirs.dod,nirs.tDOD,nirs.SD3D,nirs.s,nirs.dcAvg,nirs.dcAvgStd,nirs.tHRF,nirs.CondNames,nirs.SD);
-    [prepro, preproFileName] = DOTHUB_writePREPRO(preproFileName,logData, nirs.dodRecon,nirs.tDOD,nirs.SD3D,nirs.s,nirs.dcAvg,nirs.dcAvgStd,nirs.tHRF,nirs.CondNames,nirs.SD);
+        fprintf("Converting OD data back to intensity data for Neurodot analysis ... ");
+    
+        %Convert dod back to d for reconstruction in Neurodot
+        nirs.d = sbDotOD2Intensity(nirs.dod, mean(abs(nirs.dOrig),1));
+    
+        fprintf("complete. \n");
+        
+        %%% ============== CREATE LOG DATA AND SAVE =======================
+        % Use code snippet from DOTHUB_writePREPRO to define contents of logs:
+        [pathstr, name, ~] = fileparts(partName);
+        ds = datestr(now,'yyyymmDDHHMMSS');
+        nirsFilename = fullfile(pathstr,[name '_' folderAppend '.nirs']);
+        logData(1,:) = {'Created on: '; ds};
+        logData(2,:) = {'Derived from data: ', partName};
+        logData(3,:) = {'Pre-processed using:', mfilename('fullpath')};
+        nirs.logData = logData;
+    
+        fprintf("Saving .nirs file ... ");
+    
+        save(strcat(nirsOutputPath, '/', nirsFilename), '-struct', 'nirs');
+    
+        fprintf("complete. \n\n");
+    
+        % Use code snippet from DOTHUB_writePREPRO to define contents of logs:
+        [pathstr, name, ~] = fileparts(partName);
+        ds = datestr(now,'yyyymmDDHHMMSS');
+        preproFileName = fullfile(preproOutputsFolderPath,[name '.prepro']);
+        logData(1,:) = {'Created on: '; ds};
+        logData(2,:) = {'Derived from data: ', partName};
+        logData(3,:) = {'Pre-processed using:', mfilename('fullpath')};
+      
+    %     [prepro, preproFileName] = DOTHUB_writePREPRO([outputsFolderPath filesep preproFileName],logData,nirs.dod,nirs.tDOD,nirs.SD3D,nirs.s,nirs.dcAvg,nirs.dcAvgStd,nirs.tHRF,nirs.CondNames,nirs.SD);
+        %[prepro, preproFileName] = DOTHUB_writePREPRO(preproFileName,logData, nirs.dodRecon,nirs.tDOD,nirs.SD3D,nirs.s,nirs.dcAvg,nirs.dcAvgStd,nirs.tHRF,nirs.CondNames,nirs.SD);
     clear tInc tInc2 tIncCh tIncCh2
 
     %% Plot prepro HRF results as array map if desired. Make sure you parse the 2D version of the array.

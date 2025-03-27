@@ -178,36 +178,16 @@ function preprocessLumo(params)
 
         % ------- Block averaging -------
         fprintf("Block averaging ... ");
-        if filterBand == 1
-            [nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = hmrBlockAvg(nirs.dc, nirs.s, nirs.t, params.tRange);
-        else 
-            [nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = sbPrePhmrBlockAvgDetrend(nirs.dc, nirs.s, nirs.t, params.tRange);
-        end
+        [nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = hmrBlockAvg(nirs.dc, nirs.s, nirs.t, params.tRange);
+        %[nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = sbPrePhmrBlockAvgDetrend(nirs.dc, nirs.s, nirs.t, params.tRange);
         fprintf("complete. \n");
 
-        %%% ========== VARIABLE CONVERSION FOR IMAGE RECONSTRUCTION ========
-    
+        % ------- Variable conversion for compatibility with NeuroDOT -------
         fprintf("Converting data back to OD for reconstruction ... ");
-    
-        %Convert dcAvg back to dod for reconstruction
-        nirs.dodRecon = DOTHUB_hmrConc2OD((nirs.dcAvg)/1e6, nirs.SD3D, params.dpf); %Note converting back to Molar units here for Homer function
-        nirs.tDOD = nirs.tHRF;
-    
-        % ---- Convert dc back to dod for reconstruction ----
-        % needed if using SSR as this is applied to dc data which will change
-        % it *post* converting from dod
-        nirs.dodOrig = nirs.dod; %
-        nirs.dod = DOTHUB_hmrConc2OD((nirs.dc)/1e6, nirs.SD3D, params.dpf); %Note converting back to Molar units here for Homer function
-        
-        fprintf("complete. \n");
-    
-        %%% ========== VARIABLE CONVERSION NEURODOT COMPATABILITY ========
-    
-        fprintf("Converting OD data back to intensity data for Neurodot analysis ... ");
-    
+        %Convert dc back to dod 
+        nirs.dod = DOTHUB_hmrConc2OD(nirs.dc, nirs.SD3D, params.dpf);
         %Convert dod back to d for reconstruction in Neurodot
-        nirs.d = sbDotOD2Intensity(nirs.dod, mean(abs(nirs.dOrig),1));
-    
+        nirs.d = prepTools.od2Intensity(nirs.dod, mean(abs(nirs.d),1));
         fprintf("complete. \n");
         
         %%% ============== CREATE LOG DATA AND SAVE =======================
@@ -235,7 +215,7 @@ function preprocessLumo(params)
         logData(3,:) = {'Pre-processed using:', mfilename('fullpath')};
       
     %     [prepro, preproFileName] = DOTHUB_writePREPRO([outputsFolderPath filesep preproFileName],logData,nirs.dod,nirs.tDOD,nirs.SD3D,nirs.s,nirs.dcAvg,nirs.dcAvgStd,nirs.tHRF,nirs.CondNames,nirs.SD);
-        [prepro, preproFileName] = DOTHUB_writePREPRO(preproFileName,logData, nirs.dodRecon,nirs.tDOD,nirs.SD3D,nirs.s,nirs.dcAvg,nirs.dcAvgStd,nirs.tHRF,nirs.CondNames,nirs.SD);
+        %[prepro, preproFileName] = DOTHUB_writePREPRO(preproFileName,logData, nirs.dodRecon,nirs.tDOD,nirs.SD3D,nirs.s,nirs.dcAvg,nirs.dcAvgStd,nirs.tHRF,nirs.CondNames,nirs.SD);
     clear tInc tInc2 tIncCh tIncCh2
 
     %% Plot prepro HRF results as array map if desired. Make sure you parse the 2D version of the array.
