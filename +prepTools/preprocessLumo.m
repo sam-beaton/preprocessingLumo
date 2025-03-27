@@ -35,7 +35,7 @@ function preprocessLumo(params)
 % Arguments:            define the pipeline methods
 % (optional)            ----- For Global pipeline set all to 1-----
 %
-% standardQT:          1/True utilises parameter values from Pollonini et
+% standardQT:           1/True utilises parameter values from Pollonini et
 %                       al (2016) for QT;
 %                       otherwise, values should be specified by user
 %
@@ -155,18 +155,15 @@ function preprocessLumo(params)
         nirs = prepTools.motionReject(nirs, params);
         fprintf("complete. \n");
     
-    %%% ======================= FILTERING ==============================
+        % ------- Bandpass filtering -------
+        fprintf("Filtering ... ");
+        % Bandpass filter
+        nirs.dod = hmrBandpassFilt(nirs.dod, nirs.t, params.hpf, params.lpf);
+        fprintf("complete. \n");
 
-    fprintf("Filtering ... ");
+        % ------- Convert to concentration data -------
 
-    % Bandpass filter
-    nirs.dodFilt = hmrBandpassFilt(nirs.dodWavelet,nirs.t, params.hpf, params.lpf);
-
-    fprintf("complete. \n");
-
-    % ================ CONVERT TO CONCENTRATION ========================
-
-    fprintf("Converting to Concentration data ... ");
+        fprintf("Converting to Concentration data ... ");
 
     %note dodFilt is the output needed for non-averaged dod data if NOT
     %using SSR
