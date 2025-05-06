@@ -1,4 +1,4 @@
-function preprocessLumo(params)
+function preprocessLumoTEST(params)
 %
 % preprocessLumo
 %
@@ -94,13 +94,12 @@ function preprocessLumo(params)
     timepointNum = str2double(params.timepoint(1:2)); % Converts '01' -> 1, '48' -> 48
     timepointNum = sprintf('%02d', timepointNum); % Ensures zero-padded format
     fileList = dir(fullfile(params.dataLoc, '**', sprintf('*ses-%s*task-%s*.nirs', timepointNum, params.task)));
-    fileList = fileList(arrayfun(@(f) ~startsWith(f.name, '.'), fileList));
 
     % Extract file paths directly
     matchingFiles = fullfile({fileList.folder}, {fileList.name});
 
     % Run Preprocessing
-    for nsub = 80:length(matchingFiles)
+    for nsub = 59%1:length(matchingFiles)
 
         tic
 
@@ -108,7 +107,7 @@ function preprocessLumo(params)
 
         % (just so cmd window not blank as removed wavelet dwtmode message)
         partName = fileList(nsub).name;
-        fprintf(strcat("Preprocessing age ", params.timepoint, ", participant ", num2str(nsub), " - ", partName(5:8), " - run ", partName(end-6:end-5),  "\n\n"));
+        fprintf(strcat("Preprocessing age ", params.timepoint, ", participant ", num2str(nsub), " - ", partName(5:8), "\n\n"));
 
         % Load subject data
         [nirs, ~] = prepTools.loadSubjectData(matchingFiles{nsub});
@@ -135,16 +134,7 @@ function preprocessLumo(params)
         numChansBothChroms = length(nirs.SD.MeasListAct);
 
         % ------- Channel pruning -------
-        %plot(nirs.d)
-        fprintf("Pruning channels ... ");
-        % Detect motion artifacts and prune channels
-        nirs = prepTools.pruneChannels(nirs, params);
-        %fprintf("NEED TO ADD CHANNEL PRUNING BACK INTO PIPELINE ...");
-        fprintf("complete. \n");
-
-        % Plotting
-        %figure; plot(nirs.d)
-        %nirs.dOrig = nirs.d; % for later plotting comparison after back-conversion from dc
+        plot(nirs.d)
 
         % ------- Convert to OD ------
         fprintf("Converting to OD data ... ");
@@ -152,108 +142,14 @@ function preprocessLumo(params)
         nirs.dod = hmrIntensity2OD(nirs.d);
         fprintf("complete. \n");
 
-        % Plotting
-        %figure; plot(nirs.dod)
-        %nirs.dodOrig = nirs.dod; % for later plotting comparison after back-conversion from dc
-
-        % ------- Motion Correction -------
-        fprintf("Correcting motion ... ");
-        nirs = prepTools.motionCorrect(nirs, params);
-        %for quick testing:
-        %nirs = prepTools.motionCorrectNoWave(nirs, params); fprintf("NEED TO ADD WAVELET DENOISING BACK INTO PIPELINE ..."); 
-        fprintf("complete. \n");
-
-        % Plotting
-        %figure; plot(nirs.dod)
-
-        % ------- Motion Rejection -------
-        fprintf("Removing trials with persistent noise ... ");
-        nirs = prepTools.motionReject(nirs, params);
-        fprintf("complete. \n");
-
-        % Plotting
-        %figure; plot(nirs.dod)
-    
-        % ------- Bandpass filtering -------
-        fprintf("Filtering ... ");
-        % Bandpass filter
-        nirs.dod = hmrBandpassFilt(nirs.dod, nirs.t, params.hpf, params.lpf);
-        fprintf("complete. \n");
-
-        % Plotting
-        %figure; plot(nirs.dod)
-
-        % ------- Convert to concentration data -------
-        fprintf("Converting to Concentration data ... ");
-        %note dodFilt is the output needed for non-averaged dod data if NOT
-        %using SSR
-        nirs.dc = hmrOD2Conc(nirs.dod, nirs.SD3D, params.dpf); 
-        %nirs.dc = nirs.dc*1e6; %Homer works in Molar by default, we use uMolar
-        fprintf("complete. \n");
-
-        % Plotting
-        %figure; plot(squeeze(nirs.dc(:, 1, :)))
-    
-        % ------- Shot signal regression -------
-        if params.regrSS == 1
-            fprintf("Regressing short signals ... ");
-            nirs.dc = DOTHUB_hmrSSRegressionByChannel(nirs.dc, nirs.SD3D, params.rhoSD_ssThresh, params.flagSSmethod);
-            fprintf("complete. \n");
-        end
-
-        % Plotting
-        %figure; plot(squeeze(nirs.dc(:, 1, :))
-
-        % ------- Block averaging -------
-        fprintf("Block averaging ... ");
-        [nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = hmrBlockAvg(nirs.dc, nirs.s, nirs.t, params.tRange);
-        %[nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = sbPrePhmrBlockAvgDetrend(nirs.dc, nirs.s, nirs.t, params.tRange);
-        fprintf("complete. \n");
-
-        % Plotting
-        %figure; plot(squeeze(nirs.dc(:, 1, :)))
 
         % ------- Variable conversion for compatibility with NeuroDOT -------
-        fprintf("Converting data back to OD for reconstruction ... ");
-        %Convert dc back to dod 
-        nirs.dod = DOTHUB_hmrConc2OD(nirs.dc, nirs.SD3D, params.dpf);
+        fprintf("Converting data back to intensity ");
         %Convert dod back to d for reconstruction in Neurodot
         nirs.d = prepTools.od2Intensity(nirs.dod, mean(abs(nirs.d),1));
         fprintf("complete. \n");
-        
-        % Plotting
-%         figure; plot(nirs.dodOrig)
-%         figure; plot(nirs.dod)
-%         figure; plot(nirs.dOrig)
-%         figure; plot(nirs.d)
-%         figure; plot(squeeze(nirs.dc(:,1,:)))
-%         figure; plot(squeeze(nirs.dcAvg(:,1,:,1)))
 
-        %%% ============== CREATE LOG DATA AND SAVE =======================
-        % Use original filename to define save directory and new filename
-        splits = strsplit(partName, '_');
-        taskSplit = strsplit(splits{3}, '-');
-        nameSplit = strsplit(partName, '.');
-        nirsSavePath = fullfile(preprocDir, ...
-                                splits{1}, ...
-                                splits{2}, ...
-                                taskSplit{2});
-        if ~isfolder(nirsSavePath)
-            mkdir(nirsSavePath);
-        end 
-        nirsFilename = [nameSplit{1} '_' preprocDirName '.nirs'];
-
-        % create log data
-        ds = datestr(now,'yyyymmDDHHMMSS');
-        logData(1,:) = {'Created on: '; ds};
-        logData(2,:) = {'Derived from data: ', partName};
-        logData(3,:) = {'Pre-processed using:', mfilename('fullpath')};
-        nirs.logData = logData;
-        
-        % save file
-        fprintf("Saving .nirs file ... ");
-        save(fullfile(nirsSavePath, nirsFilename), '-struct', 'nirs');
-        fprintf("complete. \n\n");
+        figure; plot(nirs.d)
 
         toc
       

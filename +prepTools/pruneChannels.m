@@ -18,6 +18,6 @@ function [nirs] = pruneChannels(nirs, params)
     numChan = length(nirs.SD.MeasListAct)/2;
     
     % QT-NIRS pruning
-    [nirs, ~] = pruneTools.pruneWithQT(nirs, params, numChan);
+    [nirs, ~] = prepTools.pruneWithQT(nirs, params, numChan);
 
 end

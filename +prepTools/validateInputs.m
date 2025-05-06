@@ -50,21 +50,21 @@ end
 if ~isfield(params, 'sciThreshold')
     switch params.timepoint
         case '01mo'
-            params.sciThreshold = 0.7; %standard for adults - Pollonini et al 2016
+            params.sciThreshold = 0.6; %standard for adults - Pollonini et al 2016
         case '06mo'
-            params.sciThreshold = 0.7; %standard for adults - Pollonini et al 2016
+            params.sciThreshold = 0.6; %standard for adults - Pollonini et al 2016
         case '12mo'
-            params.sciThreshold = 0.7; %standard for adults - Pollonini et al 2016
+            params.sciThreshold = 0.6; %standard for adults - Pollonini et al 2016
     end
 end
 if ~isfield(params, 'pspThreshold')
     switch params.timepoint
         case '01mo'
-            params.pspThreshold = 0.1; %standard for adults - Pollonini et al 2016
+            params.pspThreshold = 0.04; %standard for adults - Pollonini et al 2016
         case '06mo'
-            params.pspThreshold = 0.1; %standard for adults - Pollonini et al 2016
+            params.pspThreshold = 0.04; %standard for adults - Pollonini et al 2016
         case '12mo'
-            params.pspThreshold = 0.1; %standard for adults - Pollonini et al 2016
+            params.pspThreshold = 0.04; %standard for adults - Pollonini et al 2016
     end
 end
 
@@ -108,7 +108,7 @@ end
 
 %% Time range for block averaging and stim rejection
 if ~isfield(params, 'tRange')
-    params.tRange = [-4 18]; %based on fPCA work
+    params.tRange = [-4 19]; % -4 based on fPCA work; 9 = stimulus; 10 = baseline
 end
 if ~isfield(params, 'tRangeRej')
     params.tRangeRej = [-4 12]; % Di Lorenzo et al. 2019

@@ -1,4 +1,4 @@
-function preprocessLumo(params)
+function preprocessLumoStrictLPF(params)
 %
 % preprocessLumo
 %
@@ -79,9 +79,10 @@ function preprocessLumo(params)
 
     %% Input processing. Check input arguments and assign where necessary
     params = prepTools.validateInputs(params);
+    params.lpf = 0.2;
 
     %% Create output directory if necessary
-    preprocDirName = 'preproc-standard'; % defined as variable as used later
+    preprocDirName = 'preproc-02LPF'; % defined as variable as used later
     preprocDir = fullfile(params.saveLoc, preprocDirName);
     if ~isfolder(preprocDir)
         mkdir(preprocDir);
@@ -100,7 +101,7 @@ function preprocessLumo(params)
     matchingFiles = fullfile({fileList.folder}, {fileList.name});
 
     % Run Preprocessing
-    for nsub = 80:length(matchingFiles)
+    for nsub = 1:length(matchingFiles)
 
         tic
 

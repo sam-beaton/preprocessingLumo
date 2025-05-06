@@ -54,9 +54,10 @@ parfor iTime = 1:length(timepoints)
     paramsLocal = params;
     paramsLocal.timepoint = timepoints{iTime};
 
-    prepTools.preprocessLumo015LPF(paramsLocal);
-    prepTools.preprocessLumo0175LPF(paramsLocal);
-    prepTools.preprocessLumo02LPF(paramsLocal);
+    %prepTools.preprocessLumo(paramsLocal);
+    prepTools.preprocessLumoStrictPrune(paramsLocal);
+    prepTools.preprocessLumoStrictLPF(paramsLocal);
+    prepTools.preprocessLumo(paramsLocal); 
 
 end
 
