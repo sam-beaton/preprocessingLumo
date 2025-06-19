@@ -15,7 +15,6 @@ pruningComparisons/
 ├── prepRunAll.m #master script - change parameters here
 │ 
 ├── +prepTools/ # modular helper functions
-│   ├── functions to go here ....
 │ 
 │── README.md
 
