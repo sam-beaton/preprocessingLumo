@@ -12,6 +12,8 @@ function prepRunAll()
 %
 % SLB 17/1/24
 
+diary(fullfile(pwd,'imageReconPreProc_29May.txt'));
+
 clear; close all;
 
 %% Add relevant toolboxes to current path
@@ -36,9 +38,11 @@ params.saveLoc = '/Volumes/Extreme SSD/dot/derivatives';
 timepoints = {'01mo', '06mo', '12mo'}; %'01mo', '06mo', '12mo'
 params.task = 'hand'; %
 
-% option for using SSR for dealing with physiological noise (default param
-% is already zero)
-%params.regrSS = 0;
+% Preprocessing parameters
+params.preprocDirName = 'preproc-imageRecon'; % used to create directory and name files
+% params.regrSS = 1; % default = 0
+params.lpf = 0.25;
+params.motionReject = 1;
     
 % add more as necessary: see preprocessLumo.m for more options
 
@@ -53,10 +57,9 @@ parfor iTime = 1:length(timepoints)
     % Create a local copy of params for each worker
     paramsLocal = params;
     paramsLocal.timepoint = timepoints{iTime};
-
-    prepTools.preprocessLumo015LPF(paramsLocal);
-    prepTools.preprocessLumo0175LPF(paramsLocal);
-    prepTools.preprocessLumo02LPF(paramsLocal);
+    
+    % run preprocessing
+    prepTools.preprocessLumo(paramsLocal);
 
 end
 
@@ -64,5 +67,7 @@ end
 delete(gcp('nocreate'));
 
 fprintf("COMPLETE \n")
+
+diary off;
 
 end

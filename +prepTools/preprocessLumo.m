@@ -81,8 +81,7 @@ function preprocessLumo(params)
     params = prepTools.validateInputs(params);
 
     %% Create output directory if necessary
-    preprocDirName = 'preproc-standard'; % defined as variable as used later
-    preprocDir = fullfile(params.saveLoc, preprocDirName);
+    preprocDir = fullfile(params.saveLoc, params.preprocDirName);
     if ~isfolder(preprocDir)
         mkdir(preprocDir);
     end
@@ -100,7 +99,7 @@ function preprocessLumo(params)
     matchingFiles = fullfile({fileList.folder}, {fileList.name});
 
     % Run Preprocessing
-    for nsub = 80:length(matchingFiles)
+    for nsub = 1:length(matchingFiles)
 
         tic
 
@@ -167,48 +166,84 @@ function preprocessLumo(params)
         %figure; plot(nirs.dod)
 
         % ------- Motion Rejection -------
-        fprintf("Removing trials with persistent noise ... ");
-        nirs = prepTools.motionReject(nirs, params);
-        fprintf("complete. \n");
-
-        % Plotting
-        %figure; plot(nirs.dod)
-    
-        % ------- Bandpass filtering -------
-        fprintf("Filtering ... ");
-        % Bandpass filter
-        nirs.dod = hmrBandpassFilt(nirs.dod, nirs.t, params.hpf, params.lpf);
-        fprintf("complete. \n");
-
-        % Plotting
-        %figure; plot(nirs.dod)
-
-        % ------- Convert to concentration data -------
-        fprintf("Converting to Concentration data ... ");
-        %note dodFilt is the output needed for non-averaged dod data if NOT
-        %using SSR
-        nirs.dc = hmrOD2Conc(nirs.dod, nirs.SD3D, params.dpf); 
-        %nirs.dc = nirs.dc*1e6; %Homer works in Molar by default, we use uMolar
-        fprintf("complete. \n");
-
-        % Plotting
-        %figure; plot(squeeze(nirs.dc(:, 1, :)))
-    
-        % ------- Shot signal regression -------
-        if params.regrSS == 1
-            fprintf("Regressing short signals ... ");
-            nirs.dc = DOTHUB_hmrSSRegressionByChannel(nirs.dc, nirs.SD3D, params.rhoSD_ssThresh, params.flagSSmethod);
+        if params.motionReject == 1
+            fprintf("Removing trials with persistent noise ... ");
+            nirs = prepTools.motionReject(nirs, params);
             fprintf("complete. \n");
+        else
+            %Force MeasListAct to be the same across wavelengths (extra check just
+            % in case)
+            nirs.SD3D = DOTHUB_balanceMeasListAct(nirs.SD3D);
+            nirs.SD = DOTHUB_balanceMeasListAct(nirs.SD);
+        end
+
+
+        % Plotting
+        %figure; plot(nirs.dod)
+    
+        if params.regrSS == 1
+
+            % ------- Bandpass filtering (pre-SS regression) -------
+            % Plotting
+            %figure; plot(nirs.dod)
+            fprintf("Filtering (prior to SS regression) ... ");
+            % Bandpass filter
+            nirs.dod = hmrBandpassFilt(nirs.dod, nirs.t, params.hpf, 1);
+            fprintf("complete. \n");
+            % ------- Short signal regression -------
+            fprintf("Regressing short signals ... ");
+            nirs.dod = DOTHUB_hmrSSRegressionByChannel(nirs.dod, nirs.SD3D, params.rhoSD_ssThresh, params.flagSSmethod);
+            fprintf("complete. \n");
+            % ------- Bandpass filtering (post-SS regression) -------
+            fprintf("Filtering (post SS regression, using final low-pass cutoff) ... ");
+            % Bandpass filter
+            nirs.dod = hmrBandpassFilt(nirs.dod, nirs.t, params.hpf, params.lpf);
+            fprintf("complete. \n");
+            % Plotting
+            %figure; plot(nirs.dod)
+    
+            % ------- Convert to concentration data -------
+            fprintf("Converting to Concentration data ... ");
+            %note dodFilt is the output needed for non-averaged dod data if NOT
+            %using SSR
+            nirs.dc = hmrOD2Conc(nirs.dod, nirs.SD3D, params.dpf); 
+            %nirs.dc = nirs.dc*1e6; %Homer works in Molar by default, we use uMolar
+            fprintf("complete. \n");
+    
+            % Plotting
+            %figure; plot(squeeze(nirs.dc(:, 1, :)))
+
+        else %if not regressing using short channels
+
+            % ------- Bandpass filtering -------
+            fprintf("Filtering ... ");
+            % Bandpass filter
+            nirs.dod = hmrBandpassFilt(nirs.dod, nirs.t, params.hpf, params.lpf);
+            fprintf("complete. \n");
+    
+            % Plotting
+            %figure; plot(nirs.dod)
+    
+            % ------- Convert to concentration data -------
+            fprintf("Converting to Concentration data ... ");
+            %note dodFilt is the output needed for non-averaged dod data if NOT
+            %using SSR
+            nirs.dc = hmrOD2Conc(nirs.dod, nirs.SD3D, params.dpf); 
+            %nirs.dc = nirs.dc*1e6; %Homer works in Molar by default, we use uMolar
+            fprintf("complete. \n");
+    
+            % Plotting
+            %figure; plot(squeeze(nirs.dc(:, 1, :)))
         end
 
         % Plotting
         %figure; plot(squeeze(nirs.dc(:, 1, :))
 
         % ------- Block averaging -------
-        fprintf("Block averaging ... ");
-        [nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = hmrBlockAvg(nirs.dc, nirs.s, nirs.t, params.tRange);
-        %[nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = sbPrePhmrBlockAvgDetrend(nirs.dc, nirs.s, nirs.t, params.tRange);
-        fprintf("complete. \n");
+%         fprintf("Block averaging ... ");
+%         [nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = hmrBlockAvg(nirs.dc, nirs.s, nirs.t, params.tRange);
+%         %[nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = sbPrePhmrBlockAvgDetrend(nirs.dc, nirs.s, nirs.t, params.tRange);
+%         fprintf("complete. \n");
 
         % Plotting
         %figure; plot(squeeze(nirs.dc(:, 1, :)))
@@ -220,6 +255,10 @@ function preprocessLumo(params)
         %Convert dod back to d for reconstruction in Neurodot
         nirs.d = prepTools.od2Intensity(nirs.dod, mean(abs(nirs.d),1));
         fprintf("complete. \n");
+
+        %remove stuff you don't need for NeuroDOT processing:
+        nirs.dod=[];
+        nirs.ErrorFlags = [];
         
         % Plotting
 %         figure; plot(nirs.dodOrig)
@@ -241,7 +280,7 @@ function preprocessLumo(params)
         if ~isfolder(nirsSavePath)
             mkdir(nirsSavePath);
         end 
-        nirsFilename = [nameSplit{1} '_' preprocDirName '.nirs'];
+        nirsFilename = [nameSplit{1} '_' params.preprocDirName '.nirs'];
 
         % create log data
         ds = datestr(now,'yyyymmDDHHMMSS');

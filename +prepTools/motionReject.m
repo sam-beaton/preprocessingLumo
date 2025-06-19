@@ -9,8 +9,9 @@ function nirs = motionReject(nirs, params)
     % Motion detection (for trial rejection)
     [tInc, tIncCh] = hmrMotionArtifactByChannel(dTemp, nirs.t, nirs.SD3D, [], params.tMotion, params.tMask, params.STDEVthresh, params.AMPthresh);
     
-    %  -------------- Trial rejection -----------------
-    [nirs.s, ~, nirs.sCh] = prepTools.adaptedEnStimRejection(nirs.t, nirs.s, tInc, [], params.tRangeRej, tIncCh);
+    % -------------- Trial rejection -----------------
+    % keep nirs.s as is, or most of data lost during neuroDOT's conversion
+    [~, ~, nirs.sCh] = prepTools.adaptedEnStimRejection(nirs.t, nirs.s, tInc, [], params.tRangeRej, tIncCh);
 
     % Update SD3D with Excluded time periods from various detection points
     nirs.SD3D.tInc=tInc;

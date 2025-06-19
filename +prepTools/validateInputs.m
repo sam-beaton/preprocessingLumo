@@ -106,7 +106,12 @@ if ~isfield(params, 'iqrWave')
     params.iqrWave = 0.8; % Molavi and Dumont 2012
 end
 
-%% Time range for block averaging and stim rejection
+%% Motion rejection
+% switch on/off
+if ~isfield(params, 'motionReject')
+    params.motionReject = 1; % default on
+end
+% Time range for block averaging and stim rejection
 if ~isfield(params, 'tRange')
     params.tRange = [-4 19]; % -4 based on fPCA work; 9 = stimulus; 10 = baseline
 end
@@ -133,8 +138,8 @@ if params.regrSS == 1
     if isfield(params, 'ssrMethod') && params.ssrMethod == 2
         params.flagSSmethod = 4; %Avg of short channels < rhoSSD_ssThresh distance from either source or detector in long channel: Uchitel et al. (2022), Gagnon et al (2012)
     elseif isfield(params, 'ssrMethod') && params.ssrMethod == 1
-        params.flagSSmethod = 2; %Avg of short channels: Uchitel et al. (2023), Sato et al (2016)
-    else
         params.flagSSmethod = 0; %Nearest short channel: Emberson et al (2016); 
+    else
+        params.flagSSmethod = 2; %Avg of short channels: Uchitel et al. (2023), Sato et al (2016)      
     end
 end
