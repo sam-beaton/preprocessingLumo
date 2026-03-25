@@ -50,21 +50,21 @@ end
 if ~isfield(params, 'sciThreshold')
     switch params.timepoint
         case '01mo'
-            params.sciThreshold = 0.6; %standard for adults - Pollonini et al 2016
+            params.sciThreshold = 0.6; %Beaton et al (2026)
         case '06mo'
-            params.sciThreshold = 0.6; %standard for adults - Pollonini et al 2016
+            params.sciThreshold = 0.6; %Beaton et al (2026)
         case '12mo'
-            params.sciThreshold = 0.6; %standard for adults - Pollonini et al 2016
+            params.sciThreshold = 0.6; %Beaton et al (2026)
     end
 end
 if ~isfield(params, 'pspThreshold')
     switch params.timepoint
         case '01mo'
-            params.pspThreshold = 0.04; %standard for adults - Pollonini et al 2016
+            params.pspThreshold = 0.04; %Beaton et al (2026)
         case '06mo'
-            params.pspThreshold = 0.04; %standard for adults - Pollonini et al 2016
+            params.pspThreshold = 0.04; %Beaton et al (2026)
         case '12mo'
-            params.pspThreshold = 0.04; %standard for adults - Pollonini et al 2016
+            params.pspThreshold = 0.04; %Beaton et al (2026)
     end
 end
 

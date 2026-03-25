@@ -88,7 +88,7 @@ function preprocessLumo(params)
 
     %% Change path and search for task files 
     % change directory 
-    %cd(params.dataLoc);
+    cd(params.dataLoc);
     % Recursively get all .nirs fiels with correct task and age
     timepointNum = str2double(params.timepoint(1:2)); % Converts '01' -> 1, '48' -> 48
     timepointNum = sprintf('%02d', timepointNum); % Ensures zero-padded format
@@ -97,24 +97,17 @@ function preprocessLumo(params)
 
     % Extract file paths directly
     matchingFiles = fullfile({fileList.folder}, {fileList.name});
-    
-    % get function full path and name for file saving within loop
-    thisFuncPath = mfilename('fullpath');
 
     % Run Preprocessing
-    parfor nsub = 1%:length(matchingFiles)
+    for nsub = 1:length(matchingFiles)
 
         tic
-
-        % ------- Create local params variable -------------------
-
-        localParams = params;
 
         % ------- Load data and initial checks/conversions -------
 
         % (just so cmd window not blank as removed wavelet dwtmode message)
         partName = fileList(nsub).name;
-        fprintf(strcat("Preprocessing age ", localParams.timepoint, ", file ", num2str(nsub), " of ", num2str(length(matchingFiles)), " - ", partName(5:8), " - run ", partName(end-6:end-5),  "\n\n"));
+        fprintf(strcat("Preprocessing age ", params.timepoint, ", file ", num2str(nsub), " of ", num2str(length(matchingFiles)), " - ", partName(5:8), " - run ", partName(end-6:end-5),  "\n\n"));
 
         % Load subject data
         [nirs, ~] = prepTools.loadSubjectData(matchingFiles{nsub});
@@ -129,13 +122,13 @@ function preprocessLumo(params)
         end
 
         % Calculate DPF for age
-        localParams.dpf = prepTools.calculateDPF(str2double(timepointNum), nirs, 1);
+        params.dpf = prepTools.calculateDPF(str2double(timepointNum), nirs, 1);
 
         %calculate the sampling frequency
         fs = 1 / mean(diff(nirs.t)); 
     
         % get (cap specific) number of channels in array
-        if ~isfield(nirs.SD, 'MeasListAct')
+        if ~exist('nirs.SD.MeasListAct', 'var')
             nirs.SD.MeasListAct = nirs.SD.MeasList(:,3);
         end
         numChansBothChroms = length(nirs.SD.MeasListAct);
@@ -144,7 +137,7 @@ function preprocessLumo(params)
         %plot(nirs.d)
         fprintf("Pruning channels ... ");
         % Detect motion artifacts and prune channels
-        nirs = prepTools.pruneChannels(nirs, localParams);
+        nirs = prepTools.pruneChannels(nirs, params);
         %fprintf("NEED TO ADD CHANNEL PRUNING BACK INTO PIPELINE ...");
         fprintf("complete. \n");
 
@@ -164,18 +157,18 @@ function preprocessLumo(params)
 
         % ------- Motion Correction -------
         fprintf("Correcting motion ... ");
-        nirs = prepTools.motionCorrect(nirs, localParams);
+        nirs = prepTools.motionCorrect(nirs, params);
         %for quick testing:
-        %nirs = prepTools.motionCorrectNoWave(nirs, localParams); fprintf("NEED TO ADD WAVELET DENOISING BACK INTO PIPELINE ..."); 
+        %nirs = prepTools.motionCorrectNoWave(nirs, params); fprintf("NEED TO ADD WAVELET DENOISING BACK INTO PIPELINE ..."); 
         fprintf("complete. \n");
 
         % Plotting
         %figure; plot(nirs.dod)
 
         % ------- Motion Rejection -------
-        if localParams.motionReject == 1
+        if params.motionReject == 1
             fprintf("Removing trials with persistent noise ... ");
-            nirs = prepTools.motionReject(nirs, localParams);
+            nirs = prepTools.motionReject(nirs, params);
             fprintf("complete. \n");
         else
             %Force MeasListAct to be the same across wavelengths (extra check just
@@ -188,23 +181,23 @@ function preprocessLumo(params)
         % Plotting
         %figure; plot(nirs.dod)
     
-        if localParams.regrSS == 1
+        if params.regrSS == 1
 
             % ------- Bandpass filtering (pre-SS regression) -------
             % Plotting
             %figure; plot(nirs.dod)
             fprintf("Filtering (prior to SS regression) ... ");
             % Bandpass filter
-            nirs.dod = hmrBandpassFilt(nirs.dod, nirs.t, localParams.hpf, 1);
+            nirs.dod = hmrBandpassFilt(nirs.dod, nirs.t, params.hpf, 1);
             fprintf("complete. \n");
             % ------- Short signal regression -------
             fprintf("Regressing short signals ... ");
-            nirs.dod = DOTHUB_hmrSSRegressionByChannel(nirs.dod, nirs.SD3D, localParams.rhoSD_ssThresh, localParams.flagSSmethod);
+            nirs.dod = DOTHUB_hmrSSRegressionByChannel(nirs.dod, nirs.SD3D, params.rhoSD_ssThresh, params.flagSSmethod);
             fprintf("complete. \n");
             % ------- Bandpass filtering (post-SS regression) -------
             fprintf("Filtering (post SS regression, using final low-pass cutoff) ... ");
             % Bandpass filter
-            nirs.dod = hmrBandpassFilt(nirs.dod, nirs.t, localParams.hpf, localParams.lpf);
+            nirs.dod = hmrBandpassFilt(nirs.dod, nirs.t, params.hpf, params.lpf);
             fprintf("complete. \n");
             % Plotting
             %figure; plot(nirs.dod)
@@ -213,7 +206,7 @@ function preprocessLumo(params)
             fprintf("Converting to Concentration data ... ");
             %note dodFilt is the output needed for non-averaged dod data if NOT
             %using SSR
-            nirs.dc = hmrOD2Conc(nirs.dod, nirs.SD3D, localParams.dpf); 
+            nirs.dc = hmrOD2Conc(nirs.dod, nirs.SD3D, params.dpf); 
             %nirs.dc = nirs.dc*1e6; %Homer works in Molar by default, we use uMolar
             fprintf("complete. \n");
     
@@ -225,7 +218,7 @@ function preprocessLumo(params)
             % ------- Bandpass filtering -------
             fprintf("Filtering ... ");
             % Bandpass filter
-            nirs.dod = hmrBandpassFilt(nirs.dod, nirs.t, localParams.hpf, localParams.lpf);
+            nirs.dod = hmrBandpassFilt(nirs.dod, nirs.t, params.hpf, params.lpf);
             fprintf("complete. \n");
     
             % Plotting
@@ -235,7 +228,7 @@ function preprocessLumo(params)
             fprintf("Converting to Concentration data ... ");
             %note dodFilt is the output needed for non-averaged dod data if NOT
             %using SSR
-            nirs.dc = hmrOD2Conc(nirs.dod, nirs.SD3D, localParams.dpf); 
+            nirs.dc = hmrOD2Conc(nirs.dod, nirs.SD3D, params.dpf); 
             %nirs.dc = nirs.dc*1e6; %Homer works in Molar by default, we use uMolar
             fprintf("complete. \n");
     
@@ -248,8 +241,8 @@ function preprocessLumo(params)
 
         % ------- Block averaging -------
 %         fprintf("Block averaging ... ");
-%         [nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = hmrBlockAvg(nirs.dc, nirs.s, nirs.t, localParams.tRange);
-%         %[nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = sbPrePhmrBlockAvgDetrend(nirs.dc, nirs.s, nirs.t, localParams.tRange);
+%         [nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = hmrBlockAvg(nirs.dc, nirs.s, nirs.t, params.tRange);
+%         %[nirs.dcAvg, nirs.dcAvgStd, nirs.tHRF] = sbPrePhmrBlockAvgDetrend(nirs.dc, nirs.s, nirs.t, params.tRange);
 %         fprintf("complete. \n");
 
         % Plotting
@@ -258,7 +251,7 @@ function preprocessLumo(params)
         % ------- Variable conversion for compatibility with NeuroDOT -------
         fprintf("Converting data back to OD for reconstruction ... ");
         %Convert dc back to dod 
-        nirs.dod = DOTHUB_hmrConc2OD(nirs.dc, nirs.SD3D, localParams.dpf);
+        nirs.dod = DOTHUB_hmrConc2OD(nirs.dc, nirs.SD3D, params.dpf);
         %Convert dod back to d for reconstruction in Neurodot
         nirs.d = prepTools.od2Intensity(nirs.dod, mean(abs(nirs.d),1));
         fprintf("complete. \n");
@@ -280,30 +273,25 @@ function preprocessLumo(params)
         splits = strsplit(partName, '_');
         taskSplit = strsplit(splits{3}, '-');
         nameSplit = strsplit(partName, '.');
-        localParams.nirsSavePath = fullfile(preprocDir, ...
+        nirsSavePath = fullfile(preprocDir, ...
                                 splits{1}, ...
                                 splits{2}, ...
                                 taskSplit{2});
-        if ~isfolder(localParams.nirsSavePath)
-            try
-                mkdir(localParams.nirsSavePath);
-            catch
-                % Folder was created by another worker between check and mkdir
-            end
-        end
-        
-        localParams.nirsFilename = [nameSplit{1} '_' localParams.preprocDirName '.nirs'];
+        if ~isfolder(nirsSavePath)
+            mkdir(nirsSavePath);
+        end 
+        nirsFilename = [nameSplit{1} '_' params.preprocDirName '.nirs'];
 
         % create log data
-        ds = char(datetime('now', 'Format', 'yyyyMMddHHmmss'));
-        logData = {'Created on: ', ds; ...
-                    'Derived from data: ', partName; ...
-                    'Pre-processed using:', thisFuncPath};
+        ds = datestr(now,'yyyymmDDHHMMSS');
+        logData(1,:) = {'Created on: '; ds};
+        logData(2,:) = {'Derived from data: ', partName};
+        logData(3,:) = {'Pre-processed using:', mfilename('fullpath')};
         nirs.logData = logData;
         
         % save file
         fprintf("Saving .nirs file ... ");
-        prepTools.parsave(fullfile(localParams.nirsSavePath, localParams.nirsFilename), nirs);
+        save(fullfile(nirsSavePath, nirsFilename), '-struct', 'nirs');
         fprintf("complete. \n\n");
 
         toc

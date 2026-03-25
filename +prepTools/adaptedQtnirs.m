@@ -1003,6 +1003,7 @@ end
             filtered_nirs_data=filtfilt(B1,A1,squeeze(nirs_data(j,:,:)));
             cardiac_data(j,:,:)=filtered_nirs_data./repmat(std(filtered_nirs_data,0,1),size(filtered_nirs_data,1),1); % Normalized heartbeat
         end
+
         overlap_samples = floor(window*fs*overlap);
         window_samples = floor(window*fs);
         if overlap ==0
@@ -1038,6 +1039,7 @@ end
             window_times(2, j) = raw.t(interval(end)); % last
 
             cardiac_windows(:,:,:,j) = cardiac_data(:,interval,:);
+
 %             if j<5 || j>(n_windows-4)
 %                 disp(['interval(',num2str(j),'):',num2str(interval(1)),'-',num2str(interval(end))]);
 %             end
@@ -1051,13 +1053,22 @@ end
             sci_array_channels = zeros(1,size(cardiac_window,3));
             power_array_channels = zeros(1,size(cardiac_window,3));
             fpower_array_channels = zeros(1,size(cardiac_window,3));
-            for k = 1:size(cardiac_window,3) % Channels iteration
+            for k = 1:size(cardiac_window,3) % Channels 
+                w1 = squeeze(cardiac_window(1,:,k));
+                w2 = squeeze(cardiac_window(2,:,k));
+                similarity = xcorr(w1, w2, 'none');
+                if isinf(similarity(37))
+                    fprintf('FOUND IT: j=%d, k=%d: sum(w1^2)=%.6f, sum(w2^2)=%.6f\n', ...
+                        j, k, sum(abs(w1).^2), sum(abs(w2).^2));
+                    break
+                end
                 %cross-correlate the two wavelength signals - both should have cardiac pulsations
-                similarity = xcorr(squeeze(cardiac_window(1,:,k)),squeeze(cardiac_window(2,:,k)),'unbiased');
+                %similarity = xcorr(squeeze(cardiac_window(1,:,k)),squeeze(cardiac_window(2,:,k)),'unbiased');
                 if any(abs(similarity)>eps)
                     % this makes the SCI=1 at lag zero when x1=x2 AND makes the power estimate independent of signal length, amplitude and Fs
                     similarity = length(squeeze(cardiac_window(1,:,k)))*similarity./sqrt(sum(abs(squeeze(cardiac_window(1,:,k))).^2)*sum(abs(squeeze(cardiac_window(2,:,k))).^2));
                     similarity(isnan(similarity)) = 0;
+                    
                     [pxx,f] = periodogram(similarity,hamming(length(similarity)),length(similarity),fs,'power');
                     [pwrest,idx] = max(pxx(f<fcut_max)); % FIX Make it age-dependent
                     sci=similarity(length(squeeze(cardiac_window(1,:,k))));
