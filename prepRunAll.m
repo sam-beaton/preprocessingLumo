@@ -36,7 +36,7 @@ params.saveLoc = '/Volumes/Extreme SSD/dot/derivatives';
 
 
 % Data information
-timepoints = {'01mo', '06mo', '12mo'};%{'01mo', '06mo', '12mo'}; %'01mo', '06mo', '12mo'
+timepoints = {'06mo', '12mo'};%{'01mo', '06mo', '12mo'}; %'01mo', '06mo', '12mo'
 params.task = 'hand'; %
 
 % Preprocessing parameters
@@ -52,13 +52,13 @@ params.targetFS = 10; %required sample rate - some sampled at 12.5Hz
 %% ======================= Run processing =========================
 
 % Start a parallel pool (specify number of workers)
-% pool = parpool(numWorkers);
+pool = parpool(numWorkers);
 
 % add required toolboxes, files etc to each parallel worker
-% pctRunOnAll addpath(genpath('/Users/sambe/Documents/GitHubRepositories/preprocessingLumo'))
-% pctRunOnAll addpath(genpath('/Users/sambe/Documents/MATLAB/Toolboxes/Homer2'))
-% pctRunOnAll addpath(genpath('/Users/sambe/Documents/MATLAB/Toolboxes/qt-nirs'))
-% pctRunOnAll addpath(genpath('/Users/sambe/Documents/MATLAB/Toolboxes/DOT-HUB_toolbox'))
+pctRunOnAll addpath(genpath('/Users/sambe/Documents/GitHubRepositories/preprocessingLumo'))
+pctRunOnAll addpath(genpath('/Users/sambe/Documents/MATLAB/Toolboxes/Homer2'))
+pctRunOnAll addpath(genpath('/Users/sambe/Documents/MATLAB/Toolboxes/qt-nirs'))
+pctRunOnAll addpath(genpath('/Users/sambe/Documents/MATLAB/Toolboxes/DOT-HUB_toolbox'))
 % addAttachedFiles(pool, { ...
 %     '/Users/sambe/Documents/GitHubRepositories/preprocessingLumo/+prepTools/parsave.m', ...
 %     '/Users/sambe/Documents/GitHubRepositories/preprocessingLumo/+prepTools/preprocessLumo.m' ...
@@ -82,8 +82,7 @@ for iTime = 1:length(timepoints)
     disp(['Diary started: ' diaryFile]);
     
     % run preprocessing
-    % prepTools.preprocessLumo(paramsLocal);
-    prepTools.test(paramsLocal);
+    prepTools.preprocessLumo(paramsLocal);
 end
 
 % Shut down the parallel pool

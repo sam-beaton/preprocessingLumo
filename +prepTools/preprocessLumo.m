@@ -8,12 +8,6 @@ function preprocessLumo(params)
 % 
 % -------------------------------------------------------------------------
 %
-% Steps:
-%
-% [processing steps here]
-% 
-% -------------------------------------------------------------------------
-%
 % Arguments:        contained in the 'params' variable 
 %     
 % [input parameters here]
@@ -102,7 +96,8 @@ function preprocessLumo(params)
     thisFuncPath = mfilename('fullpath');
 
     % Run Preprocessing
-    parfor nsub = 1%:length(matchingFiles)
+    parfor nsub = 1:length(matchingFiles)
+    %for nsub = 1:length(matchingFiles)
 
         tic
 
@@ -133,7 +128,7 @@ function preprocessLumo(params)
 
         %calculate the sampling frequency
         fs = 1 / mean(diff(nirs.t)); 
-    
+
         % get (cap specific) number of channels in array
         if ~isfield(nirs.SD, 'MeasListAct')
             nirs.SD.MeasListAct = nirs.SD.MeasList(:,3);
@@ -158,6 +153,17 @@ function preprocessLumo(params)
         nirs.dod = hmrIntensity2OD(nirs.d);
         fprintf("complete. \n");
 
+        % --- Resample if necessary ---
+        % Here in pipeline to prevent negative raw intensity value
+        % generation
+        fs = 1 / mean(diff(nirs.t));
+        if abs(fs - localParams.targetFS) > 1e-6
+            [nirs, fs, localParams.ntNew] = prepTools.resampleNIRS(nirs, fs, localParams.targetFS);
+        else
+            nirs.fsOrig = fs;
+            localParams.ntNew = size(nirs.t,1);
+        end
+
         % Plotting
         %figure; plot(nirs.dod)
         %nirs.dodOrig = nirs.dod; % for later plotting comparison after back-conversion from dc
@@ -178,8 +184,8 @@ function preprocessLumo(params)
             nirs = prepTools.motionReject(nirs, localParams);
             fprintf("complete. \n");
         else
-            %Force MeasListAct to be the same across wavelengths (extra check just
-            % in case)
+            %Force MeasListAct to be the same across wavelengths (extra 
+            % check just in case)
             nirs.SD3D = DOTHUB_balanceMeasListAct(nirs.SD3D);
             nirs.SD = DOTHUB_balanceMeasListAct(nirs.SD);
         end

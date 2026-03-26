@@ -9,10 +9,10 @@ function [nirs] = pruneChannels(nirs, params)
     windowInfo = struct();
     
     % Detect motion artifacts using amp and std thresholds (by channel)
-    [nirs.SD.tInc, nirs.SD.tIncCh] = hmrMotionArtifactByChannel(nirs.d, nirs.t, nirs.SD, [], params.tMotion, params.tMask, params.STDEVthresh, params.AMPthresh);
+    [nirs.tInc, nirs.tIncCh] = hmrMotionArtifactByChannel(nirs.d, nirs.t, nirs.SD, [], params.tMotion, params.tMask, params.STDEVthresh, params.AMPthresh);
 
     % Prune channels using Homer prior to QT-NIRS
-    nirs.SD = enPruneChannels(nirs.d, nirs.SD, nirs.SD.tInc, params.dRange, params.SNRthresh, params.SDrange, 0);
+    nirs.SD = enPruneChannels(nirs.d, nirs.SD, nirs.tInc, params.dRange, params.SNRthresh, params.SDrange, 0);
 
     % Get number of channels (both chromophores)
     numChan = length(nirs.SD.MeasListAct)/2;

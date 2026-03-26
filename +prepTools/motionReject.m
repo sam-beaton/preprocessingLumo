@@ -13,11 +13,9 @@ function nirs = motionReject(nirs, params)
     % keep nirs.s as is, or most of data lost during neuroDOT's conversion
     [~, ~, nirs.sCh] = prepTools.adaptedEnStimRejection(nirs.t, nirs.s, tInc, [], params.tRangeRej, tIncCh);
 
-    % Update SD3D with Excluded time periods from various detection points
-    nirs.SD3D.tInc=tInc;
-    nirs.SD3D.tIncCh=tIncCh;
-    nirs.SD.tInc=tInc;
-    nirs.SD.tIncCh=tIncCh;
+    % Update nirs file  with Excluded time periods from various detection points
+    nirs.tInc=tInc;
+    nirs.tIncCh=tIncCh;
     
     %Force MeasListAct to be the same across wavelengths
     nirs.SD3D = DOTHUB_balanceMeasListAct(nirs.SD3D);

@@ -1570,7 +1570,7 @@ end
 % -------------------------------------------------------------------------
 function [excludeMatrix, channelWindowMarked] = assessTimeWindows(nirs, window_, overlap_, fs)
     % Extract necessary variables
-    tIncCh = nirs.SD.tIncCh; % [timepoints x 2*n_channels] matrix
+    tIncCh = nirs.tIncCh; % [timepoints x 2*n_channels] matrix
     timepoints = size(tIncCh, 1);
     n_channels = size(nirs.d, 2) / length(nirs.SD.Lambda); % Number of channels
     n_total_channels = 2 * n_channels; % 2*n_channels
